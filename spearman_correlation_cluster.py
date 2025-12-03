@@ -132,10 +132,10 @@ for var in candidate_vars[30:45]:
 
             rho, _ = spearmanr(x, y, nan_policy="omit")
             
-            if all(np.isnan(rho)):
+            if np.isnan(rho):
                 corr_matrix.loc[row_name, :] = [0] * len(lags_hours)
             else:
-                corr_matrix.loc[row_name, :] = rho
+                corr_matrix.loc[row_name, :] = [rho] * len(lags_hours)
 
         # Variable temporelle
         else:
