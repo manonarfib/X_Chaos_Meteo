@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+import os
 
 from make_datasets import build_datasets, ERA5Dataset
 from convlstm import PrecipConvLSTM
@@ -117,14 +118,16 @@ def main():
     t_train_start = time.time()
 
     start_epoch = 1
-    checkpoint_path = "checkpoints/conv_lstm_last.pt"
     
-    if os.path.exists(checkpoint_path):
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+    last_checkpoint = "checkpoints/conv_lstm_last.pt"
+    os.makedirs(os.path.dirname(last_checkpoint), exist_ok=True)
+    
+    if os.path.exists(last_checkpoint):
+        checkpoint = torch.load(last_checkpoint, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
-        print(f"[CHECKPOINT] Chargé depuis {checkpoint_path}, reprise à l'époque {start_epoch}")
+        print(f"[CHECKPOINT] Chargé depuis {last_checkpoint}, reprise à l'époque {start_epoch}")
     else:
         print("[CHECKPOINT] Aucun checkpoint trouvé, entraînement depuis le début")
 
@@ -178,6 +181,11 @@ def main():
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
         }, checkpoint_path)
+        epoch_checkpoint = f"checkpoints/conv_lstm_epoch{epoch}.pt"
+        torch.save({'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+        }, epoch_checkpoint)
         print(f"[CHECKPOINT] Sauvegardé à {checkpoint_path}")
             
         # ----- Validation -----
