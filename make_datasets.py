@@ -40,7 +40,7 @@ def open_weatherbench2_era5(url: str = WB2_URL) -> xr.Dataset:
     """
     Ouvre le store Zarr ERA5 de WeatherBench2 en lazy.
     """
-    ds = xr.open_zarr(url, consolidated=True)
+    ds = xr.open_zarr(url, consolidated=True, chunks='auto')
     return ds
 
 
@@ -73,30 +73,132 @@ def subset_europe(ds: xr.Dataset) -> xr.Dataset:
 
 def select_variables(ds: xr.Dataset) -> xr.Dataset:
     """
-    Ne garde que les variables nécessaires (entrées + cible).
+    Ne garde que les variables nécessaires (entrées + cible), en créant des
+    variables dérivées au bon niveau :
 
     Cible :
-        - total_precipitation_6hr  -> converti en mm / 6h
+        - total_precipitation_6hr -> 'tp' (mm/6h), dims: (time, lat, lon)
 
     Entrées :
-        - u_component_of_wind      (3D : time, level, lat, lon)
-        - v_component_of_wind
+        - 2m_temperature                -> 'temp_2m'             (time, lat, lon)
+        - 10m_u_component_of_wind       -> 'u_comp_10'           (time, lat, lon)
+        - 10m_v_component_of_wind       -> 'v_comp_10'           (time, lat, lon)
+        - land_sea_mask                 -> 'land_sea_mask'       (lat, lon)
+        - geopotential_at_surface       -> 'geo_surf'            (lat, lon)  
+        - boundary_layer_height         -> 'bound_lay_height'    (time, lat, lon)    
+        - geostrophic_wind_speed        -> 'geo_wind_speed'      (time, level, lat, lon)
+        - mean_sea_level_pressure       -> 'mean_sea_lvl_press'  (time, lat, lon)
+        - relative_humidity             -> 'rel_hum'             (time, level, lat, lon)
+        - soil_type                     -> 'soil'                (time, lat, lon)
+        - temperature                   -> 'temp'                (time, level, lat, lon)
+        - vertical_velocity             -> 'vertical_velo'       (time, level, lat, lon)
+        - total_cloud_cover             -> 'cloud_cov'           (time, lat, lon)
+        - u_component_of_wind           -> 'u_comp'              (time, level, lat, lon)
+        - v_component_of_wind           -> 'v_comp'              (time, level, lat, lon)
+        - volumetric_soil_water_layer_1 -> 'vol_soil_layer1'     (time, lat, lon)  
     """
+
+    # Variables sources nécessaires dans le dataset d'origine
     required_vars = [
         "total_precipitation_6hr",
+        "2m_temperature",
+        "10m_u_component_of_wind",
+        "10m_v_component_of_wind",
+        "land_sea_mask",
+        "geopotential_at_surface",
+        "boundary_layer_height",
+        "geostrophic_wind_speed",
+        "mean_sea_level_pressure",
+        "relative_humidity",
+        "soil_type",
+        "temperature",
+        "vertical_velocity",
+        "total_cloud_cover",
         "u_component_of_wind",
         "v_component_of_wind",
+        "volumetric_soil_water_layer_1"
     ]
 
     missing = [v for v in required_vars if v not in ds.variables]
     if missing:
         raise KeyError(f"Variables manquantes dans le dataset : {missing}")
 
-    ds_sel = ds[required_vars].copy()
+    # --- Cible : précipitations sur 6h en mm/6h ---
+    tp_6h = ds["total_precipitation_6hr"] * 1000.0
+    tp_6h = tp_6h.rename("tp_6h")
+    tp_6h.attrs["units"] = "mm/6h"
 
-    # conversion m/6h -> mm/6h pour la cible (plus lisible)
-    ds_sel["total_precipitation_6hr"] = ds_sel["total_precipitation_6hr"] * 1000.0
-    ds_sel["total_precipitation_6hr"].attrs["units"] = "mm/6h"
+    # --- Entrées sans niveau vertical ---
+    t_2m = ds["2m_temperature"].rename("t_2m")  # en K
+    u_10 = ds["10m_u_component_of_wind"].rename("u_10")
+    v_10 = ds["10m_v_component_of_wind"].rename("v_10")
+    land_sea_mask = ds["land_sea_mask"].rename("land_sea_mask")
+    geo_surf = ds["geopotential_at_surface"].rename("geo_surf")
+    bound_lay_height = ds["boundary_layer_height"].rename("bound_lay_height")
+    mean_sea_lvl_press = ds["mean_sea_level_pressure"].rename("mean_sea_lvl_press")
+    soil = ds["soil_type"].rename("soil")
+    cloud_cov = ds["total_cloud_cover"].rename("cloud_cov")
+    vol_soil_layer1 = ds["volumetric_soil_water_layer_1"].rename("vol_soil_layer1")
+
+    # --- Entrées avec niveau vertical -> on sélectionne level ---
+    geo_wind_speed_925 = ds["geostrophic_wind_speed"].sel(level=925).rename("geo_wind_speed_925")
+    geo_wind_speed_700 = ds["geostrophic_wind_speed"].sel(level=700).rename("geo_wind_speed_700")
+    geo_wind_speed_500 = ds["geostrophic_wind_speed"].sel(level=500).rename("geo_wind_speed_500")
+    rel_hum_925 = ds["relative_humidity"].sel(level=925).rename("rel_hum_925")
+    rel_hum_700 = ds["relative_humidity"].sel(level=700).rename("rel_hum_700")
+    rel_hum_500 = ds["relative_humidity"].sel(level=500).rename("rel_hum_500")
+    temp_925 = ds["temperature"].sel(level=925).rename("temp_925")
+    temp_700 = ds["temperature"].sel(level=700).rename("temp_700")
+    temp_500 = ds["temperature"].sel(level=500).rename("temp_500")
+    vertical_velo_925 = ds["vertical_velocity"].sel(level=925).rename("vertical_velo_925")
+    vertical_velo_700 = ds["vertical_velocity"].sel(level=700).rename("vertical_velo_700")
+    vertical_velo_500 = ds["vertical_velocity"].sel(level=500).rename("vertical_velo_500")
+    u_comp_925 = ds["u_component_of_wind"].sel(level=925).rename("u_comp_925")
+    u_comp_700 = ds["u_component_of_wind"].sel(level=700).rename("u_comp_700")
+    u_comp_500 = ds["u_component_of_wind"].sel(level=500).rename("u_comp_500")
+    v_comp_925 = ds["v_component_of_wind"].sel(level=925).rename("v_comp_925")
+    v_comp_700 = ds["v_component_of_wind"].sel(level=700).rename("v_comp_700")
+    v_comp_500 = ds["v_component_of_wind"].sel(level=500).rename("v_comp_500")
+
+    # Dataset final "propre"
+    ds_sel = xr.Dataset(
+        data_vars={
+            "tp_6h": tp_6h,
+            "t_2m": t_2m,
+            "u_comp_10": u_10,
+            "v_comp_10": v_10,
+            "land_sea_mask": land_sea_mask,
+            "geo_surf": geo_surf,
+            "bound_lay_height": bound_lay_height,
+            "geo_wind_speed_925": geo_wind_speed_925,
+            "geo_wind_speed_700": geo_wind_speed_700,
+            "geo_wind_speed_500": geo_wind_speed_500,
+            "mean_sea_lvl_press": mean_sea_lvl_press,
+            "rel_hum_925": rel_hum_925,
+            "rel_hum_700": rel_hum_700,
+            "rel_hum_500": rel_hum_500,
+            "soil": soil,
+            "temp_925": temp_925,
+            "temp_700": temp_700,
+            "temp_500": temp_500,
+            "vertical_velo_925": vertical_velo_925,
+            "vertical_velo_700": vertical_velo_700,
+            "vertical_velo_500": vertical_velo_500,
+            "cloud_cov": cloud_cov,
+            "u_comp_925": u_comp_925,
+            "u_comp_700": u_comp_700,
+            "u_comp_500": u_comp_500,
+            "v_comp_925": v_comp_925,
+            "v_comp_700": v_comp_700,
+            "v_comp_500": v_comp_500,
+            "vol_soil_layer1": vol_soil_layer1
+        },
+        coords={
+            "time": ds.time,
+            "latitude": ds.latitude,
+            "longitude": ds.longitude,
+        },
+    )
 
     return ds_sel
 
