@@ -21,7 +21,7 @@ def main():
     print("[STEP] build_datasets() ...")
     ds_train, ds_val, ds_test = build_datasets()
     print(f"[DONE] build_datasets() en {time.time() - t0:.1f} s")
-
+    
     # -------------------------------------------------
     # 2) Restriction à 2 semaines sur le train
     #    (2 semaines de données 6h -> 14 jours * 4 = 56 pas de temps)
