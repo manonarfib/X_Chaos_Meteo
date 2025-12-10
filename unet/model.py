@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from losses import *
 
 
 def _xavier_uniform_(module: nn.Module):  # Initialisation des couches
@@ -249,3 +250,113 @@ class WFUNet(nn.Module):
             outs.append(self.streams[i_feature](x[i_feature]))
         fused = torch.cat(outs, dim=1)  # concat sur les canaux
         return self.fusion(fused)
+
+
+class WFUNet_with_train(WFUNet):
+    def __init__(self, loss_fn=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Si aucun criterion n'est fourni :
+        self.criterion = loss_fn if loss_fn is not None else nn.MSELoss()
+
+    def compute_loss(self, output, target, loss_type="w_mse_and_w_dice"):
+        if loss_type in ["w_mse", "w_dice", "w_mse_and_w_dice"]:
+            weight = torch.where(
+                target > 0.1,
+                torch.tensor(5.0, device=target.device),
+                torch.tensor(1.0, device=target.device)
+            )
+        else:
+            weight = None
+
+        if loss_type == "w_mse_and_w_dice":
+            criterion_mse = WeightedMSELoss(weight)
+            criterion_dice = WeightedDiceRegressionLoss(weight)
+            loss_mse = criterion_mse(output, target)
+            loss_dice = criterion_dice(output, target)
+            return 0.7 * loss_mse + 0.3 * loss_dice
+
+        elif loss_type == "w_dice":
+            criterion_dice = WeightedDiceRegressionLoss(weight)
+            return criterion_dice(output, target)
+
+        elif loss_type == "w_mse":
+            criterion_mse = WeightedMSELoss(weight)
+            return criterion_mse(output, target)
+
+        else:  # mse only
+            criterion_mse = WeightedMSELoss()
+            return criterion_mse(output, target)
+
+    # ---------------------------------------------------------------------
+    #  ONE EPOCH TRAINING
+    # ---------------------------------------------------------------------
+    def train_one_epoch(self, train_loader, optimizer, loss_type, device):
+        self.train()
+        total_loss = 0
+
+        for x, target in train_loader:
+            x = x.to(device)
+            target = target.to(device)
+
+            optimizer.zero_grad()
+            output = self(x)
+            loss = self.compute_loss(output, target, loss_type)
+
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item() * x.size(0)
+
+        return total_loss / len(train_loader.dataset)
+
+    # ---------------------------------------------------------------------
+    #  VALIDATION
+    # ---------------------------------------------------------------------
+    def evaluate(self, val_loader, loss_type, device):
+        self.eval()
+        total_loss = 0
+
+        with torch.no_grad():
+            for x, target in val_loader:
+                x = x.to(device)
+                target = target.to(device)
+                output = self(x)
+                loss = self.compute_loss(output, target, loss_type)
+                total_loss += loss.item() * x.size(0)
+
+        return total_loss / len(val_loader.dataset)
+
+    # ---------------------------------------------------------------------
+    #  COMPLETE TRAINING LOOP
+    # ---------------------------------------------------------------------
+    def fit(self, train_loader, val_loader, optimizer, scheduler,
+            epochs, loss_type, device, save_path="best_model.pt"):
+
+        train_losses = []
+        val_losses = []
+        best_val = float("inf")
+
+        for epoch in range(epochs):
+            train_loss = self.train_one_epoch(
+                train_loader, optimizer, loss_type, device
+            )
+            val_loss = self.evaluate(val_loader, loss_type, device)
+
+            train_losses.append(train_loss)
+            val_losses.append(val_loss)
+
+            scheduler.step(val_loss)
+
+            print(
+                f"Epoch [{epoch+1}/{epochs}] "
+                f"Train Loss: {train_loss:.6f}  Val Loss: {val_loss:.6f}"
+            )
+
+            # save best
+            if val_loss < best_val:
+                best_val = val_loss
+                torch.save(self.state_dict(), save_path)
+                print("Saved new best model!")
+
+        return train_losses, val_losses
