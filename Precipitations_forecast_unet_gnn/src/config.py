@@ -3,12 +3,32 @@ from pathlib import Path
 
 # Data
 ERA5_ZARR_PATH = "gs://weatherbench2/datasets/era5/1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr"
-YEARS = [2000]
+# YEARS = [2000]
+YEARS = "all"
 REGION = {
 "lat_slice": (75, 35),
 "lon_slices": [(347.5, 360), (0, 42.5)]
 }
-INPUT_VARS = ["t2m", "z500", "u10", "v10", "q"]
+# INPUT_VARS = ["t2m", "z500", "u10", "v10", "q"]
+INPUT_VARS = [
+        "total_precipitation_6hr",
+        "2m_temperature",
+        "10m_u_component_of_wind",
+        "10m_v_component_of_wind",
+        "land_sea_mask",
+        "geopotential_at_surface",
+        "boundary_layer_height",
+        "geostrophic_wind_speed",
+        "mean_sea_level_pressure",
+        "relative_humidity",
+        "soil_type",
+        "temperature",
+        "vertical_velocity",
+        "total_cloud_cover",
+        "u_component_of_wind",
+        "v_component_of_wind",
+        "volumetric_soil_water_layer_1"
+    ]
 TARGET_VAR = "total_precipitation_6hr"
 
 

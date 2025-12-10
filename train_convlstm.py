@@ -5,8 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from make_datasets import build_datasets
-from era5_convlstm_dataset import ERA5ConvLSTMDataset
+from make_datasets import build_datasets, ERA5Dataset
 from convlstm import PrecipConvLSTM
 
 
@@ -52,8 +51,15 @@ def main():
     # -------------------------------------------------
     print("\n[STEP] Création du Dataset PyTorch (ERA5ConvLSTMDataset)...")
     t2 = time.time()
-    train_dataset = ERA5ConvLSTMDataset(
+    train_dataset = ERA5Dataset(
         ds=ds_train,
+        input_vars=input_vars,
+        target_var=target_var,
+        n_input_steps=5,
+        lead_steps=1,
+    )
+    val_dataset = ERA5Dataset(
+        ds=ds_val,
         input_vars=input_vars,
         target_var=target_var,
         n_input_steps=5,
@@ -74,6 +80,10 @@ def main():
         shuffle=True,
         num_workers=0,  # à 0 pour éviter les soucis avec xarray/dask
     )
+    val_loader = DataLoader(val_dataset, 
+                            batch_size=batch_size, 
+                            shuffle=False, 
+                            num_workers=0)
     print(f"[DONE] DataLoader créé en {time.time() - t3:.1f} s")
     num_batches = len(train_loader)
     print(f"Nombre de batches par epoch : {num_batches}")
@@ -149,6 +159,18 @@ def main():
             f"- Loss moyen: {avg_loss:.4e} "
             f"- Temps epoch: {epoch_time:.1f}s\n"
         )
+        
+        # ----- Validation -----
+        model.eval()
+        val_losses = []
+        with torch.no_grad():
+            for batch_idx, (X, y) in enumerate(val_loader):
+                x, y = X.to(device), y.to(device)
+                y_hat = model(X)
+                val_loss = criterion(y_hat, y)
+                val_losses.append(val_loss.item())
+
+        print(f"Epoch {epoch}, val loss: {np.mean(val_losses):.6f}")
 
     total_train_time = time.time() - t_train_start
     print(f"[TRAIN] Entraînement terminé en {total_train_time:.1f} s")

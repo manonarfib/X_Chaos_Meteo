@@ -20,6 +20,7 @@ val_idx = idx[int(0.8*ntime):int(0.9*ntime)]
 
 
 train_ds = ERA5FieldDataset(ds_inputs, ds_target, train_idx, mean, std)
+print("train_ds done")
 val_ds = ERA5FieldDataset(ds_inputs, ds_target, val_idx, mean, std)
 train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
 val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
