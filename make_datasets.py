@@ -27,7 +27,7 @@ LAT_MIN_EU = 35.0
 
 # Split temporel
 TRAIN_START = "1980-01-01"
-TRAIN_END   = "2015-12-31"
+TRAIN_END   = "1980-01-14"
 VAL_START   = "2016-01-01"
 VAL_END     = "2018-12-31"
 TEST_START  = "2019-01-01"
@@ -320,7 +320,7 @@ def build_datasets(
     #     ds_test.to_zarr(f"{out_prefix}_test.zarr", mode="w", consolidated=True)
     #     print("Sauvegarde terminée.")
     
-    print_dataset_overview(ds_train, name="train", n_vars=10)
+    # print_dataset_overview(ds_train, name="train", n_vars=10)
 
     return ds_train, ds_val, ds_test
 
