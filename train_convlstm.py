@@ -116,7 +116,19 @@ def main():
     print("\n[TRAIN] Début de l'entraînement...")
     t_train_start = time.time()
 
-    for epoch in range(1, n_epochs + 1):
+    start_epoch = 1
+    checkpoint_path = "checkpoints/conv_lstm_last.pt"
+    
+    if os.path.exists(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        print(f"[CHECKPOINT] Chargé depuis {checkpoint_path}, reprise à l'époque {start_epoch}")
+    else:
+        print("[CHECKPOINT] Aucun checkpoint trouvé, entraînement depuis le début")
+
+    for epoch in range(start_epoch, n_epochs + 1):
         model.train()
         epoch_loss = 0.0
         epoch_start = time.time()
@@ -160,6 +172,14 @@ def main():
             f"- Temps epoch: {epoch_time:.1f}s\n"
         )
         
+        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+        }, checkpoint_path)
+        print(f"[CHECKPOINT] Sauvegardé à {checkpoint_path}")
+            
         # ----- Validation -----
         model.eval()
         val_losses = []
