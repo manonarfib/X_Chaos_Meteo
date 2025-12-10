@@ -1,0 +1,39 @@
+name: weather
+channels:
+  - pytorch
+  - pyg
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - numpy=1.25
+  - pandas=1.5
+  - xarray=2023.7.0
+  - dask
+  - netcdf4
+  - h5py
+  - scipy
+  - matplotlib
+  - tqdm
+  - pip
+
+  # PyTorch CPU ou GPU selon ta machine
+  - pytorch
+  - torchvision
+  - torchaudio
+
+  # PyTorch Geometric (important pour GridMPNN)
+  # - pytorch-geometric
+
+  # Graph tools
+  - networkx
+
+  # Utils
+  - scikit-learn
+  - pyyaml
+
+  - pip:
+      - einops
+      - wandb
+      - tensorboard
