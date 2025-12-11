@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import os
+import csv
 
 from make_datasets import build_datasets, ERA5Dataset
 from convlstm import PrecipConvLSTM
@@ -50,7 +51,7 @@ def main():
     #    n_input_steps = 5 -> historique de 5*6h = 30h
     #    lead_steps    = 1 -> prédiction à +6h
     # -------------------------------------------------
-    print("\n[STEP] Création du Dataset PyTorch (ERA5ConvLSTMDataset)...")
+    print("\n[STEP] Création du Dataset PyTorch (ERA5Dataset)...")
     t2 = time.time()
     train_dataset = ERA5Dataset(
         ds=ds_train,
@@ -119,7 +120,7 @@ def main():
 
     start_epoch = 1
     
-    last_checkpoint = "checkpoints/conv_lstm_last.pt"
+    last_checkpoint = "checkpoints/checkpoint_last.pt"
     os.makedirs(os.path.dirname(last_checkpoint), exist_ok=True)
     
     if os.path.exists(last_checkpoint):
@@ -130,6 +131,37 @@ def main():
         print(f"[CHECKPOINT] Chargé depuis {last_checkpoint}, reprise à l'époque {start_epoch}")
     else:
         print("[CHECKPOINT] Aucun checkpoint trouvé, entraînement depuis le début")
+
+    csv_path = "checkpoints/validation_log.csv"
+    os.makedirs("checkpoints", exist_ok=True)
+    csv_header = ["epoch", "batch_idx", "eval_type", "loss"]
+
+    if not os.path.exists(csv_path):
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(csv_header)
+
+    week_len = 56
+    n_weeks = ds_val.sizes["time"] // week_len
+    week_indices = list(range(n_weeks))
+    while True:
+        w1, w2 = random.sample(week_indices, 2)
+    mini_val = xr.concat([
+        ds_val.isel(time=slice(w1 * week_len, (w1 + 1) * week_len)),
+        ds_val.isel(time=slice(w2 * week_len, (w2 + 1) * week_len)),
+    ], dim="time")
+    
+    mini_val_dataset = ERA5Dataset(
+        ds=mini_val,
+        input_vars=input_vars,
+        target_var=target_var,
+        n_input_steps=5,
+        lead_steps=1,
+    )
+    mini_val_loader = DataLoader(mini_val_dataset, batch_size=batch_size, shuffle=False)
+
+    # fréquence pour ≈ 40 checkpoints par epoch
+    checkpoint_every = max(1, num_batches // 40)
 
     for epoch in range(start_epoch, n_epochs + 1):
         model.train()
@@ -156,6 +188,35 @@ def main():
             optimizer.step()
 
             epoch_loss += loss.item()
+            
+            if (batch_idx + 1) % checkpoint_every == 0:
+                model.eval()
+                mini_losses = []
+                with torch.no_grad():
+                    for Xv, yv in mini_val_loader:
+                        Xv, yv = Xv.to(device), yv.to(device)
+                        yv_hat = model(Xv).squeeze(1)
+                        mini_losses.append(criterion(yv_hat, yv).item())
+
+                mini_val_loss = float(np.mean(mini_losses))
+
+                # log CSV
+                with open(csv_path, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([epoch, batch_idx + 1, "mini_val", mini_val_loss])
+
+                # checkpoint
+                cp_path = f"checkpoints/epoch{epoch}_batch{batch_idx+1}.pt"
+                torch.save({
+                    "epoch": epoch,
+                    "batch": batch_idx + 1,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                }, cp_path)
+
+                print(f"[CHECKPOINT-INTER] Epoch {epoch} Batch {batch_idx+1} - mini_val_loss: {mini_val_loss:.4e}")
+                model.train()
+
 
             # Logs intermédiaires (toutes les 5 batches par ex.)
             if (batch_idx + 1) % 5 == 0 or (batch_idx + 1) == num_batches:
@@ -175,30 +236,37 @@ def main():
             f"- Temps epoch: {epoch_time:.1f}s\n"
         )
         
-        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-        }, checkpoint_path)
-        epoch_checkpoint = f"checkpoints/conv_lstm_epoch{epoch}.pt"
-        torch.save({'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-        }, epoch_checkpoint)
-        print(f"[CHECKPOINT] Sauvegardé à {checkpoint_path}")
-            
         # ----- Validation -----
         model.eval()
         val_losses = []
         with torch.no_grad():
             for batch_idx, (X, y) in enumerate(val_loader):
-                x, y = X.to(device), y.to(device)
-                y_hat = model(X)
-                val_loss = criterion(y_hat, y)
+                Xv, yv = X.to(device), yv.to(device)
+                yv_hat = model(X).squeeze(1)
+                val_loss = criterion(yv_hat, yv)
                 val_losses.append(val_loss.item())
 
         print(f"Epoch {epoch}, val loss: {np.mean(val_losses):.6f}")
+        
+        val_loss_full = float(np.mean(val_losses))
+
+        # log CSV
+        with open(csv_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([epoch, -1, "full_val", val_loss_full])
+            
+        epoch_checkpoint = f"checkpoints/epoch{epoch}_full.pt"
+        torch.save({'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+        }, epoch_checkpoint)
+        torch.save({
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+        }, last_checkpoint)
+        print(f"[CHECKPOINT] Sauvegardé à {epoch_checkpoint}")
+            
 
     total_train_time = time.time() - t_train_start
     print(f"[TRAIN] Entraînement terminé en {total_train_time:.1f} s")
