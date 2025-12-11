@@ -192,6 +192,7 @@ def main():
             epoch_loss += loss.item()
             
             if (batch_idx + 1) % checkpoint_every == 0:
+                print("[VALIDATION] Starting mini val")
                 model.eval()
                 mini_losses = []
                 with torch.no_grad():
