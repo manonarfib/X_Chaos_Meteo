@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 import os
 import csv
 import random
+import xarray as xr
 
 from make_datasets import build_datasets, ERA5Dataset
 from convlstm import PrecipConvLSTM
