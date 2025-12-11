@@ -60,14 +60,14 @@ def main():
         ds=ds_train,
         input_vars=input_vars,
         target_var=target_var,
-        n_input_steps=5,
+        n_input_steps=9,
         lead_steps=1,
     )
     val_dataset = ERA5Dataset(
         ds=ds_val,
         input_vars=input_vars,
         target_var=target_var,
-        n_input_steps=5,
+        n_input_steps=9,
         lead_steps=1,
     )
     print(f"[DONE] Dataset PyTorch créé en {time.time() - t2:.1f} s")
@@ -144,33 +144,49 @@ def main():
             writer = csv.writer(f)
             writer.writerow(csv_header)
 
-    week_len = 56
-    n_weeks = ds_val.sizes["time"] // week_len
-    week_indices = list(range(n_weeks))
-    w1, w2 = random.sample(week_indices, 2)
-    mini_val = xr.concat([
-        ds_val.isel(time=slice(w1 * week_len, (w1 + 1) * week_len)),
-        ds_val.isel(time=slice(w2 * week_len, (w2 + 1) * week_len)),
-    ], dim="time")
-    
-    mini_val_dataset = ERA5Dataset(
-        ds=mini_val,
-        input_vars=input_vars,
-        target_var=target_var,
-        n_input_steps=5,
-        lead_steps=1,
-    )
-    mini_val_loader = DataLoader(mini_val_dataset, batch_size=batch_size, shuffle=False)
+    if not os.path.exists("mini_val_batches.pt"):
+        week_len = 56
+        n_weeks = ds_val.sizes["time"] // week_len
+        week_indices = list(range(n_weeks))
+        w1, w2 = random.sample(week_indices, 2)
+        mini_val = xr.concat([
+            ds_val.isel(time=slice(w1 * week_len, (w1 + 1) * week_len)),
+            ds_val.isel(time=slice(w2 * week_len, (w2 + 1) * week_len)),
+        ], dim="time")
+        
+        mini_val_dataset = ERA5Dataset(
+            ds=mini_val,
+            input_vars=input_vars,
+            target_var=target_var,
+            n_input_steps=9,
+            lead_steps=1,
+        )
+        mini_val_loader = DataLoader(mini_val_dataset, batch_size=batch_size, shuffle=False)
+        
+        mini_val_batches = []
 
+        print("Pré-chargement des batches mini-val...")
+        for i, (X, y) in enumerate(mini_val_loader):
+            mini_val_batches.append((X, y))
+            print(f"Batch {i+1}/{len(mini_val_loader)} chargé")
+
+        # Sauvegarde sur disque
+        torch.save(mini_val_batches, "mini_val_batches.pt")
+        print(f"{len(mini_val_batches)} batches sauvegardés")
+        
     # fréquence pour ≈ 40 checkpoints par epoch
     checkpoint_every = max(1, num_batches // 40)
+    print(f"Mini val will be performed every {checkpoint_every}")
 
     for epoch in range(start_epoch, n_epochs + 1):
         model.train()
+        first_checkpoint_done = False
+        
         epoch_loss = 0.0
         epoch_start = time.time()
 
         for batch_idx, (X, y) in enumerate(train_loader):
+            print("Batch index :", batch_idx)
             batch_start = time.time()
 
             # X : (B, T_in, C_in, H, W)
@@ -192,33 +208,39 @@ def main():
             epoch_loss += loss.item()
             
             if (batch_idx + 1) % checkpoint_every == 0:
-                print("[VALIDATION] Starting mini val")
-                model.eval()
-                mini_losses = []
-                with torch.no_grad():
-                    for Xv, yv in mini_val_loader:
-                        Xv, yv = Xv.to(device), yv.to(device)
-                        yv_hat = model(Xv).squeeze(1)
-                        mini_losses.append(criterion(yv_hat, yv).item())
+                if not first_checkpoint_done:
+                    first_checkpoint_done = True
+                    pass  # ne rien faire, juste ignorer
+                else:
+                    print("[VALIDATION] Starting mini val")
+                    mini_val_batches = torch.load("mini_val_batches.pt")
+                    mini_val_batches = [(X.to(device), y.to(device)) for X, y in mini_val_batches]
 
-                mini_val_loss = float(np.mean(mini_losses))
+                    model.eval()
+                    mini_losses = []
+                    with torch.no_grad():
+                        for Xv, yv in mini_val_batches:
+                            yv_hat = model(Xv).squeeze(1)
+                            mini_losses.append(criterion(yv_hat, yv).item())
 
-                # log CSV
-                with open(csv_path, "a", newline="") as f:
-                    writer = csv.writer(f)
-                    writer.writerow([epoch, batch_idx + 1, "mini_val", mini_val_loss])
+                    mini_val_loss = float(np.mean(mini_losses))
 
-                # checkpoint
-                cp_path = f"checkpoints/epoch{epoch}_batch{batch_idx+1}.pt"
-                torch.save({
-                    "epoch": epoch,
-                    "batch": batch_idx + 1,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                }, cp_path)
+                    # log CSV
+                    with open(csv_path, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerow([epoch, batch_idx + 1, "mini_val", mini_val_loss])
 
-                print(f"[CHECKPOINT-INTER] Epoch {epoch} Batch {batch_idx+1} - mini_val_loss: {mini_val_loss:.4e}")
-                model.train()
+                    # checkpoint
+                    cp_path = f"checkpoints/epoch{epoch}_batch{batch_idx+1}.pt"
+                    torch.save({
+                        "epoch": epoch,
+                        "batch": batch_idx + 1,
+                        "model_state_dict": model.state_dict(),
+                        "optimizer_state_dict": optimizer.state_dict(),
+                    }, cp_path)
+
+                    print(f"[CHECKPOINT-INTER] Epoch {epoch} Batch {batch_idx+1} - mini_val_loss: {mini_val_loss:.4e}")
+                    model.train()
 
 
             # Logs intermédiaires (toutes les 5 batches par ex.)
