@@ -6,10 +6,12 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import os
 import csv
+import random
 
 from make_datasets import build_datasets, ERA5Dataset
 from convlstm import PrecipConvLSTM
 
+random.seed(42)
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -144,8 +146,7 @@ def main():
     week_len = 56
     n_weeks = ds_val.sizes["time"] // week_len
     week_indices = list(range(n_weeks))
-    while True:
-        w1, w2 = random.sample(week_indices, 2)
+    w1, w2 = random.sample(week_indices, 2)
     mini_val = xr.concat([
         ds_val.isel(time=slice(w1 * week_len, (w1 + 1) * week_len)),
         ds_val.isel(time=slice(w2 * week_len, (w2 + 1) * week_len)),
