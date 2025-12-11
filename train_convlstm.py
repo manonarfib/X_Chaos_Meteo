@@ -175,7 +175,7 @@ def main():
         print(f"{len(mini_val_batches)} batches sauvegardés")
         
     # fréquence pour ≈ 40 checkpoints par epoch
-    checkpoint_every = max(1, num_batches // 40)
+    checkpoint_every = max(1, num_batches // 5)
     print(f"Mini val will be performed every {checkpoint_every}")
 
     for epoch in range(start_epoch, n_epochs + 1):
