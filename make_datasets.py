@@ -30,7 +30,7 @@ LAT_MIN_EU = 35.0
 
 # Split temporel
 TRAIN_START = "1980-01-01"
-TRAIN_END   = "1980-01-14"
+TRAIN_END   = "2015-12-31"
 VAL_START   = "2016-01-01"
 VAL_END     = "2018-12-31"
 TEST_START  = "2019-01-01"
@@ -383,8 +383,8 @@ class ERA5Dataset(Dataset):
         self.valid_time_indices = np.arange(t_min, t_max + 1)
 
         # Juste pour sanity check : mémoriser tailles spatiales
-        self.H = ds.dims["latitude"]
-        self.W = ds.dims["longitude"]
+        self.H = ds.sizes["latitude"]
+        self.W = ds.sizes["longitude"]
 
     def __len__(self):
         return len(self.valid_time_indices)
