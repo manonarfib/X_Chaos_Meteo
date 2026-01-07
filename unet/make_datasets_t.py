@@ -2,7 +2,7 @@ import xarray as xr
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from typing import Tuple
+from typing import Tuple, List
 
 # --------- CONFIG GLOBALE ---------
 
@@ -117,47 +117,60 @@ def select_variables(ds: xr.Dataset) -> xr.Dataset:
     tp_6h = tp_6h.rename("tp_6h")
     tp_6h.attrs["units"] = "mm/6h"
 
-    # --- Entrées sans niveau vertical ---
-    t_2m = ds["2m_temperature"].rename("t_2m")  # en K
+    # --- Entrées sans niveau vertical et avec temporalité ---
+    t_2m = ds["2m_temperature"].rename("t_2m")
     u_10 = ds["10m_u_component_of_wind"].rename("u_10")
     v_10 = ds["10m_v_component_of_wind"].rename("v_10")
-    land_sea_mask = ds["land_sea_mask"].rename("land_sea_mask")
-    geo_surf = ds["geopotential_at_surface"].rename("geo_surf")
     bound_lay_height = ds["boundary_layer_height"].rename("bound_lay_height")
-    mean_sea_lvl_press = ds["mean_sea_level_pressure"].rename(
-        "mean_sea_lvl_press")
-    soil = ds["soil_type"].rename("soil")
+    mean_sea_lvl_press = ds["mean_sea_level_pressure"].rename("mean_sea_lvl_press")
     cloud_cov = ds["total_cloud_cover"].rename("cloud_cov")
-    vol_soil_layer1 = ds["volumetric_soil_water_layer_1"].rename(
-        "vol_soil_layer1")
+    vol_soil_layer1 = ds["volumetric_soil_water_layer_1"].rename("vol_soil_layer1")
+    
+    # helper pour variables statiques (lat, lon) -> (time, lat, lon)
+    def static_broadcast(var_name: str, new_name: str) -> xr.DataArray:
+        return (
+            ds[var_name]
+            .broadcast_like(tp_6h)     # ajoute l'axe time
+            .rename(new_name)
+        )
+        
+    land_sea_mask = static_broadcast("land_sea_mask", "land_sea_mask")
+    geo_surf = static_broadcast("geopotential_at_surface", "geo_surf")
+    soil = static_broadcast("soil_type", "soil")
 
-    # --- Entrées avec niveau vertical -> on sélectionne level ---
-    geo_wind_speed_925 = ds["geostrophic_wind_speed"].sel(
-        level=925).rename("geo_wind_speed_925")
-    geo_wind_speed_700 = ds["geostrophic_wind_speed"].sel(
-        level=700).rename("geo_wind_speed_700")
-    geo_wind_speed_500 = ds["geostrophic_wind_speed"].sel(
-        level=500).rename("geo_wind_speed_500")
-    rel_hum_925 = ds["relative_humidity"].sel(level=925).rename("rel_hum_925")
-    rel_hum_700 = ds["relative_humidity"].sel(level=700).rename("rel_hum_700")
-    rel_hum_500 = ds["relative_humidity"].sel(level=500).rename("rel_hum_500")
-    temp_925 = ds["temperature"].sel(level=925).rename("temp_925")
-    temp_700 = ds["temperature"].sel(level=700).rename("temp_700")
-    temp_500 = ds["temperature"].sel(level=500).rename("temp_500")
-    vertical_velo_925 = ds["vertical_velocity"].sel(
-        level=925).rename("vertical_velo_925")
-    vertical_velo_700 = ds["vertical_velocity"].sel(
-        level=700).rename("vertical_velo_700")
-    vertical_velo_500 = ds["vertical_velocity"].sel(
-        level=500).rename("vertical_velo_500")
-    u_comp_925 = ds["u_component_of_wind"].sel(level=925).rename("u_comp_925")
-    u_comp_700 = ds["u_component_of_wind"].sel(level=700).rename("u_comp_700")
-    u_comp_500 = ds["u_component_of_wind"].sel(level=500).rename("u_comp_500")
-    v_comp_925 = ds["v_component_of_wind"].sel(level=925).rename("v_comp_925")
-    v_comp_700 = ds["v_component_of_wind"].sel(level=700).rename("v_comp_700")
-    v_comp_500 = ds["v_component_of_wind"].sel(level=500).rename("v_comp_500")
+    # --- helper pour les variables avec level ---
+    def at_level(var_name: str, level: int, new_name: str) -> xr.DataArray:
+        return (
+            ds[var_name]
+            .sel(level=level)
+            .reset_coords("level", drop=True)
+            .rename(new_name)
+        )
 
-    # Dataset final "propre"
+    geo_wind_speed_925 = at_level("geostrophic_wind_speed", 925, "geo_wind_speed_925")
+    geo_wind_speed_700 = at_level("geostrophic_wind_speed", 700, "geo_wind_speed_700")
+    geo_wind_speed_500 = at_level("geostrophic_wind_speed", 500, "geo_wind_speed_500")
+
+    rel_hum_925 = at_level("relative_humidity", 925, "rel_hum_925")
+    rel_hum_700 = at_level("relative_humidity", 700, "rel_hum_700")
+    rel_hum_500 = at_level("relative_humidity", 500, "rel_hum_500")
+
+    temp_925 = at_level("temperature", 925, "temp_925")
+    temp_700 = at_level("temperature", 700, "temp_700")
+    temp_500 = at_level("temperature", 500, "temp_500")
+
+    vertical_velo_925 = at_level("vertical_velocity", 925, "vertical_velo_925")
+    vertical_velo_700 = at_level("vertical_velocity", 700, "vertical_velo_700")
+    vertical_velo_500 = at_level("vertical_velocity", 500, "vertical_velo_500")
+
+    u_comp_925 = at_level("u_component_of_wind", 925, "u_comp_925")
+    u_comp_700 = at_level("u_component_of_wind", 700, "u_comp_700")
+    u_comp_500 = at_level("u_component_of_wind", 500, "u_comp_500")
+
+    v_comp_925 = at_level("v_component_of_wind", 925, "v_comp_925")
+    v_comp_700 = at_level("v_component_of_wind", 700, "v_comp_700")
+    v_comp_500 = at_level("v_component_of_wind", 500, "v_comp_500")
+
     ds_sel = xr.Dataset(
         data_vars={
             "tp_6h": tp_6h,
@@ -188,7 +201,7 @@ def select_variables(ds: xr.Dataset) -> xr.Dataset:
             "v_comp_925": v_comp_925,
             "v_comp_700": v_comp_700,
             "v_comp_500": v_comp_500,
-            "vol_soil_layer1": vol_soil_layer1
+            "vol_soil_layer1": vol_soil_layer1,
         },
         coords={
             "time": ds.time,
@@ -200,6 +213,7 @@ def select_variables(ds: xr.Dataset) -> xr.Dataset:
     return ds_sel
 
 
+
 def split_train_val_test(ds: xr.Dataset) -> Tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
     """
     Découpe le dataset en train / val / test selon les dates définies en haut du fichier.
@@ -209,6 +223,98 @@ def split_train_val_test(ds: xr.Dataset) -> Tuple[xr.Dataset, xr.Dataset, xr.Dat
     ds_test = ds.sel(time=slice(TEST_START,  TEST_END))
 
     return ds_train, ds_val, ds_test
+
+
+def print_dataset_overview(ds: xr.Dataset, name: str = "train", n_vars: int = 8) -> None:
+    """
+    Affiche un petit aperçu du Dataset :
+    - liste des variables
+    - un point (time, lat, lon) avec les valeurs de chaque variable
+
+    On ne charge en mémoire qu'un seul point de la grille, donc c'est très léger.
+    """
+    print(f"\n===== Aperçu du dataset {name} =====")
+    print(ds)  # résumé xarray classique
+    print("\nVariables disponibles :", list(ds.data_vars.keys()))
+
+    # Choisir un point "au milieu" (indices centraux)
+    t_idx = ds.dims["time"] // 2
+    lat_idx = ds.dims["latitude"] // 2
+    lon_idx = ds.dims["longitude"] // 2
+
+    # Coordonnées associées
+    t_val = ds.time.isel(time=t_idx).values
+    lat_val = float(ds.latitude.isel(latitude=lat_idx).values)
+    lon_val = float(ds.longitude.isel(longitude=lon_idx).values)
+
+    print(f"\nPoint échantillon : time={str(t_val)[:19]}, "
+          f"lat={lat_val:.2f}, lon={lon_val:.2f}")
+
+    # Extraire ce point pour toutes les variables (toujours lazy, puis compute sur des scalaires)
+    point = ds.isel(time=t_idx, latitude=lat_idx, longitude=lon_idx).compute()
+
+    # Limiter éventuellement le nombre de variables affichées
+    vars_to_show = list(point.data_vars.keys())[:n_vars]
+
+    print(f"\nValeurs pour quelques variables (sur {len(point.data_vars)} au total) :")
+    for var in vars_to_show:
+        da = point[var]
+        val = float(da.values)
+        units = da.attrs.get("units", "")
+        units_str = f" [{units}]" if units else ""
+        print(f"  - {var:20s} = {val: .4f}{units_str}")
+
+
+# --------- MAIN PIPELINE ---------
+
+def build_datasets(
+    out_prefix: str = "era5_europe_precip"
+) -> Tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
+    """
+    Pipeline complet :
+      1) ouverture WB2/ERA5
+      2) recentrage longitudes
+      3) découpage Europe
+      4) sélection variables (features + cible)
+      5) split train/val/test
+
+    Args:
+        save_to_disk: si True, écrit les datasets en Zarr dans le cwd.
+        out_prefix: préfixe des dossiers Zarr créés.
+
+    Returns:
+        (ds_train, ds_val, ds_test)
+    """
+    print("Ouverture du dataset WeatherBench2 / ERA5...")
+    ds = open_weatherbench2_era5()
+
+    print("Recentrage des longitudes en [-180, 180]...")
+    ds = recenter_longitudes(ds)
+
+    print("Découpage du domaine Europe...")
+    ds = subset_europe(ds)
+
+    print("Sélection des variables (u, v, total_precipitation_6hr)...")
+    ds = select_variables(ds)
+
+    print("Split train / val / test...")
+    ds_train, ds_val, ds_test = split_train_val_test(ds)
+
+    print("Taille train :", {k: int(v) for k, v in ds_train.sizes.items()})
+    print("Taille val   :", {k: int(v) for k, v in ds_val.sizes.items()})
+    print("Taille test  :", {k: int(v) for k, v in ds_test.sizes.items()})
+
+    # if save_to_disk:
+    #     print("Écriture des datasets en Zarr local...")
+    #     ds_train.to_zarr(f"{out_prefix}_train.zarr", mode="w", consolidated=True)
+    #     ds_val.to_zarr(f"{out_prefix}_val.zarr",   mode="w", consolidated=True)
+    #     ds_test.to_zarr(f"{out_prefix}_test.zarr", mode="w", consolidated=True)
+    #     print("Sauvegarde terminée.")
+    
+    # print_dataset_overview(ds_train, name="train", n_vars=10)
+
+    return ds_train, ds_val, ds_test
+
 
 
 class ERA5Dataset(Dataset):
@@ -229,7 +335,7 @@ class ERA5Dataset(Dataset):
     def __init__(
         self,
         ds: xr.Dataset,
-        input_vars: list[str],
+        input_vars: List[str],
         target_var: str = "tp_6h",
         # nombre de pas temporels en entrée (par ex. 9 => -48h...0h)
         n_input_steps: int = 9,
