@@ -1,6 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
+import time
+import csv
+import pandas as pd
+from tqdm import tqdm
 from losses import *
 
 
@@ -86,28 +91,29 @@ class UNet3D(nn.Module):
     Sortie: (B, features_output, D_out, H_out, W_out)  (D_out dépend de lags et des conv (lags,1,1))
     """
 
-    def __init__(self, lags, features_output, filters=16, dropout=0.0):
+    def __init__(self, lags, features,features_output, filters=16, dropout=0.0):
         super().__init__()
         self.lags = int(lags)
+        self.features=int(features)
         self.features_output = int(features_output)
         self.filters = int(filters)
 
         # --- Encoder ---
-        # in_ch défini plus bas via build()
-        self.enc1 = DoubleConv3d(in_ch=None, out_ch=self.filters)
+        # self.enc1 = DoubleConv3d(in_ch=1, out_ch=self.filters)
+        self.enc1 = DoubleConv3d(in_ch=features, out_ch=self.filters)
         self.pool = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
         self.enc2 = DoubleConv3d(
-            in_ch=2 * self.filters, out_ch=2 * self.filters)
+            in_ch=self.filters, out_ch=2 * self.filters)
         self.enc3 = DoubleConv3d(
-            in_ch=4 * self.filters, out_ch=4 * self.filters)
+            in_ch=2 * self.filters, out_ch=4 * self.filters)
         self.enc4 = DoubleConv3d(
-            in_ch=8 * self.filters, out_ch=8 * self.filters)
+            in_ch=4 * self.filters, out_ch=8 * self.filters)
         self.drop4 = nn.Dropout(dropout)
 
         # --- Bottleneck ---
         self.bottleneck_conv = Conv3dSame(
-            16 * self.filters, 16 * self.filters, kernel_size=3)
+            8 * self.filters, 16 * self.filters, kernel_size=3)
         self.compress_lags5 = LagConv3d(
             16 * self.filters, 16 * self.filters, lags=self.lags)
         self.bottleneck_post = Conv3dSame(
@@ -117,7 +123,7 @@ class UNet3D(nn.Module):
         # --- Decoder (up blocks) ---
         self.up6 = nn.Sequential(
             nn.Upsample(scale_factor=(1, 2, 2), mode="nearest"),
-            Conv3dSame(8 * self.filters, 8 * self.filters, kernel_size=2),
+            Conv3dSame(16 * self.filters, 8 * self.filters, kernel_size=2),
         )
         self.compress6 = LagConv3d(
             8 * self.filters, 8 * self.filters, lags=self.lags)
@@ -126,7 +132,7 @@ class UNet3D(nn.Module):
 
         self.up7 = nn.Sequential(
             nn.Upsample(scale_factor=(1, 2, 2), mode="nearest"),
-            Conv3dSame(4 * self.filters, 4 * self.filters, kernel_size=2),
+            Conv3dSame(8 * self.filters, 4 * self.filters, kernel_size=2),
         )
         self.compress7 = LagConv3d(
             4 * self.filters, 4 * self.filters, lags=self.lags)
@@ -135,7 +141,7 @@ class UNet3D(nn.Module):
 
         self.up8 = nn.Sequential(
             nn.Upsample(scale_factor=(1, 2, 2), mode="nearest"),
-            Conv3dSame(2 * self.filters, 2 * self.filters, kernel_size=2),
+            Conv3dSame(4 * self.filters, 2 * self.filters, kernel_size=2),
         )
         self.compress8 = LagConv3d(
             2 * self.filters, 2 * self.filters, lags=self.lags)
@@ -144,7 +150,7 @@ class UNet3D(nn.Module):
 
         self.up9 = nn.Sequential(
             nn.Upsample(scale_factor=(1, 2, 2), mode="nearest"),
-            Conv3dSame(self.filters, self.filters, kernel_size=2),
+            Conv3dSame(2*self.filters, self.filters, kernel_size=2),
         )
         self.compress9 = LagConv3d(self.filters, self.filters, lags=self.lags)
         self.dec9 = DoubleConv3d(in_ch=2 * self.filters, out_ch=self.filters)
@@ -157,16 +163,14 @@ class UNet3D(nn.Module):
 
         self._built = False
 
-    def _build(self, in_features: int):
-        # Le premier bloc dépend du nombre de canaux d'entrée (features)
-        self.enc1 = DoubleConv3d(in_ch=in_features, out_ch=self.filters)
+    def _build(self):
         _xavier_uniform_(self)
         self._built = True
 
     def forward(self, x):
         # x: (B, C=features, D=lags, H, W)
         if not self._built:
-            self._build(in_features=x.shape[1])
+            self._build()
 
         # --- Encoder ---
         conv1 = self.enc1(x)
@@ -185,7 +189,7 @@ class UNet3D(nn.Module):
         pool4 = self.pool(drop4)
         conv5 = F.relu(self.bottleneck_conv(pool4))
 
-        compress_lags5 = self.compress_lags5(conv5)  # (lags,1,1) valid
+        compress_lags5 = self.compress_lags5(conv5)
         conv5 = F.relu(self.bottleneck_post(compress_lags5))
         drop5 = self.drop5(conv5)
 
@@ -211,9 +215,10 @@ class UNet3D(nn.Module):
         conv9 = self.dec9(merge9)
 
         conv9 = F.relu(self.final_conv_2(conv9))
-        out = F.relu(self.final_conv_1(conv9))  # comme TF (relu sur le 1x1)
+        out = F.relu(self.final_conv_1(conv9))
 
         return out
+
 
 
 class WFUNet(nn.Module):
@@ -222,42 +227,69 @@ class WFUNet(nn.Module):
     Entrées attendues: [x1, ..., xN] chacune en (B, features, lags, latitude, longitude)
     """
 
-    def __init__(self, lags, latitude, longitude, features, features_output, filters=16, dropout=0.0):
+    def __init__(self, lags, latitude, longitude, features, features_output, batch_size, filters=16, dropout=0.0):
         super().__init__()
+        self.batch_size=int(batch_size)
         self.lags = int(lags)
         self.latitude = int(latitude)
         self.longitude = int(longitude)
         self.features = int(features)
         self.features_output = int(features_output)
-        self.streams = []
+        # self.streams = nn.ModuleList()
 
-        for i_feature in range(self.features):
-            self.streams.append(UNet3D(lags=self.lags, features_output=self.features_output,
-                                       filters=filters, dropout=dropout))
+        # for i_feature in range(self.features):
+        #     # Mémoire allouée par PyTorch (actuellement utilisée)
+        #     print(f"Allocated: {torch.cuda.memory_allocated(0) / 1e9:.2f} GB")
+        #     print(f"Creating Unet model for variable {i_feature}")
+        #     self.streams.append(UNet3D(lags=self.lags, features=self.features, features_output=self.features_output,
+        #                                filters=filters, dropout=dropout))
 
-        # self.streamA = UNet3D(lags=self.lags, features_output=self.features_output,
-        #                       filters=filters, dropout=dropout)
-        # self.streamB = UNet3D(lags=self.lags, features_output=self.features_output,
-        #                       filters=filters, dropout=dropout)
-
-        # fusion: concat -> 1x1 linear (pas d'activation), comme TF (activation='linear')
-        self.fusion = nn.Conv3d(2 * self.features_output,
-                                self.features_output, kernel_size=1)
+        # self.fusion = nn.Conv3d(self.features * self.features_output,
+        #                         self.features_output, kernel_size=1)
+        
+        self.unet = UNet3D(
+            lags=self.lags,
+            features=self.features,           # toutes les features en entrée
+            features_output=self.features_output,
+            filters=filters,
+            dropout=dropout
+        )
+        
 
     def forward(self, x):
-        outs = []
-        for i_feature in range(self.features):
-            outs.append(self.streams[i_feature](x[i_feature]))
-        fused = torch.cat(outs, dim=1)  # concat sur les canaux
-        return self.fusion(fused)
+
+        b, T, C, H, W = x.shape
+        H_orig, W_orig = H, W
+        pad_h = (16 - H % 16) % 16
+        pad_w = (16 - W % 16) % 16
+        # padding: (left, right, top, bottom) pour les 2 dernières dimensions
+        x = F.pad(
+            x,
+            pad=(0, pad_w, 0, pad_h),  # W puis H
+            mode="constant",
+            value=0
+        )
+        x = x.permute(0, 2, 1, 3, 4)
+
+        # outs = []
+        # for i_feature in range(self.features):
+        #     x_feature_i = x[:, :, i_feature, :, :].unsqueeze(1)
+        #     out=self.streams[i_feature](x_feature_i)
+        #     out = out[..., :H_orig, :W_orig]
+        #     outs.append(out)
+        # fused = torch.cat(outs, dim=1)  # concat sur les canaux
+        
+        # return self.fusion(fused)
+
+        out = self.unet(x)  # UNet traite toutes les features en une seule passe
+        out = out[..., :H_orig, :W_orig]  # enlever le padding
+
+        return out
 
 
 class WFUNet_with_train(WFUNet):
-    def __init__(self, loss_fn=None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        # Si aucun criterion n'est fourni :
-        self.criterion = loss_fn if loss_fn is not None else nn.MSELoss()
 
     def compute_loss(self, output, target, loss_type="w_mse_and_w_dice"):
         if loss_type in ["w_mse", "w_dice", "w_mse_and_w_dice"]:
@@ -270,45 +302,24 @@ class WFUNet_with_train(WFUNet):
             weight = None
 
         if loss_type == "w_mse_and_w_dice":
-            criterion_mse = WeightedMSELoss(weight)
-            criterion_dice = WeightedDiceRegressionLoss(weight)
-            loss_mse = criterion_mse(output, target)
-            loss_dice = criterion_dice(output, target)
+            criterion_mse = WeightedMSELoss()
+            criterion_dice = WeightedDiceRegressionLoss()
+            loss_mse = criterion_mse(output, target, weight)
+            loss_dice = criterion_dice(output, target, weight)
             return 0.7 * loss_mse + 0.3 * loss_dice
 
         elif loss_type == "w_dice":
-            criterion_dice = WeightedDiceRegressionLoss(weight)
-            return criterion_dice(output, target)
+            criterion_dice = WeightedDiceRegressionLoss()
+            return criterion_dice(output, target,weight)
 
         elif loss_type == "w_mse":
-            criterion_mse = WeightedMSELoss(weight)
-            return criterion_mse(output, target)
+            criterion_mse = WeightedMSELoss()
+            return criterion_mse(output, target,weight)
 
         else:  # mse only
             criterion_mse = WeightedMSELoss()
             return criterion_mse(output, target)
 
-    # ---------------------------------------------------------------------
-    #  ONE EPOCH TRAINING
-    # ---------------------------------------------------------------------
-    def train_one_epoch(self, train_loader, optimizer, loss_type, device):
-        self.train()
-        total_loss = 0
-
-        for x, target in train_loader:
-            x = x.to(device)
-            target = target.to(device)
-
-            optimizer.zero_grad()
-            output = self(x)
-            loss = self.compute_loss(output, target, loss_type)
-
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item() * x.size(0)
-
-        return total_loss / len(train_loader.dataset)
 
     # ---------------------------------------------------------------------
     #  VALIDATION
@@ -317,11 +328,16 @@ class WFUNet_with_train(WFUNet):
         self.eval()
         total_loss = 0
 
+        num_batches_val = len(val_loader)
+
         with torch.no_grad():
-            for x, target in val_loader:
+            pbar_val = tqdm(val_loader, total=num_batches_val, leave=True)
+            for batchid, (x, target, i) in enumerate(pbar_val):
                 x = x.to(device)
                 target = target.to(device)
                 output = self(x)
+                print("OUTPUT", output)
+                print("TARGET", target)
                 loss = self.compute_loss(output, target, loss_type)
                 total_loss += loss.item() * x.size(0)
 
@@ -331,32 +347,129 @@ class WFUNet_with_train(WFUNet):
     #  COMPLETE TRAINING LOOP
     # ---------------------------------------------------------------------
     def fit(self, train_loader, val_loader, optimizer, scheduler,
-            epochs, loss_type, device, save_path="best_model.pt"):
+            epochs, loss_type, device, weight_update_interval, val_loss_calculation_interval, save_path="best_model.pt"):
 
-        train_losses = []
-        val_losses = []
-        best_val = float("inf")
+        last_checkpoint = os.path.join(save_path, "checkpoint_last.pt")
+        os.makedirs(os.path.dirname(last_checkpoint), exist_ok=True)
 
-        for epoch in range(epochs):
-            train_loss = self.train_one_epoch(
-                train_loader, optimizer, loss_type, device
-            )
-            val_loss = self.evaluate(val_loader, loss_type, device)
+        start_epoch=1
 
-            train_losses.append(train_loss)
-            val_losses.append(val_loss)
+        if os.path.exists(last_checkpoint):
+            checkpoint = torch.load(last_checkpoint, map_location=device)
+            self.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            start_epoch = checkpoint['epoch'] + 1
+            print(f"[CHECKPOINT] Chargé depuis {last_checkpoint}, reprise à l'époque {start_epoch}")
+        else:
+            print("[CHECKPOINT] Aucun checkpoint trouvé, entraînement depuis le début")
 
-            scheduler.step(val_loss)
 
+        csv_path_train = os.path.join(save_path,"train_log.csv")
+        csv_path_val = os.path.join(save_path,"validation_log.csv")
+
+        previous_val_b_loss = float("inf")
+
+        total_nb_train_batches=len(train_loader)
+
+        accumulation_steps=weight_update_interval//self.batch_size
+        val_calculation_steps=val_loss_calculation_interval//self.batch_size
+
+        for epoch in range(start_epoch, epochs+1):
+
+            self.train()
+            optimizer.zero_grad()
+            epoch_loss = 0.0
+            accumulation_step_loss = 0
+
+            epoch_start=time.time()
+
+            pbar = tqdm(train_loader, total=total_nb_train_batches, desc=f"Epoch {epoch}/{epochs}", leave=True)
+            for batch_idx, (x, target, i) in enumerate(pbar):
+
+                batch_start = time.time()
+                print(f"Training for batch {batch_idx}")
+                x = x.to(device)
+                target = target.to(device)
+
+                output = self(x)
+
+                raw_loss = self.compute_loss(output, target, loss_type)
+
+                if torch.isnan(raw_loss).any():
+                    date = pd.to_datetime(train_loader.dataset.Y.time.values[i])
+                    print(f"NaN détecté à la date {date}")
+                    continue
+
+                (raw_loss / accumulation_steps).backward()
+                epoch_loss += raw_loss.item()
+                accumulation_step_loss += raw_loss / accumulation_steps
+
+                if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == total_nb_train_batches:
+                    optimizer.step()
+                    optimizer.zero_grad()
+
+                    batch_time = time.time() - batch_start
+                    print(
+                        f"[Epoch {epoch}/{epochs}] "
+                        f"Batch {batch_idx+1}/{total_nb_train_batches} "
+                        f"- Loss: {accumulation_step_loss.item():.4e} "
+                        f"- Batch time: {batch_time:.2f}s"
+                    )
+
+                    with open(csv_path_train, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerow([epoch, batch_idx, accumulation_step_loss])
+
+                    accumulation_step_loss=0
+
+                if (batch_idx + 1) % val_calculation_steps == 0 or (batch_idx + 1) == total_nb_train_batches:
+                    self.eval()
+                    previous_val_b_loss = val_batches_loss
+                    val_batches_loss = self.evaluate(val_loader, loss_type, device)
+
+                    if previous_val_b_loss>val_batches_loss:
+                        best_checkpoint = os.path.join(save_path, f"best_checkpoint_epoch{epoch}_batch_idx{batch_idx}.pt")
+                        torch.save({
+                            "epoch": epoch,
+                            "model_state_dict": self.state_dict(),
+                            "optimizer_state_dict": optimizer.state_dict(),
+                        }, best_checkpoint)
+
+                    with open(csv_path_val, "a", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerow([epoch, batch_idx, "val", val_batches_loss])
+
+                    scheduler.step(val_batches_loss)
+                    self.train()
+
+                    
+
+                batch_end = time.time()
+                print(f"event : training batch end, batch {batch_idx}, duration :{batch_end - batch_start}")
+
+                       
+            epoch_time = time.time() - epoch_start
+            avg_loss = epoch_loss / total_nb_train_batches
+            pbar.set_postfix(loss=f"{epoch_loss.item():.3e}", avg=f"{avg_loss:.3e}", bt=f"{batch_time:.2f}s")
             print(
-                f"Epoch [{epoch+1}/{epochs}] "
-                f"Train Loss: {train_loss:.6f}  Val Loss: {val_loss:.6f}"
+                f"\n>>> Epoch {epoch}/{epochs} terminée "
+                f"- Loss moyen: {avg_loss:.4e} "
+                f"- Temps epoch: {epoch_time:.1f}s\n"
             )
 
-            # save best
-            if val_loss < best_val:
-                best_val = val_loss
-                torch.save(self.state_dict(), save_path)
-                print("Saved new best model!")
+            torch.save(self.state_dict(), os.path.join(save_path, f"epoch_{epoch}.pt"))
+            print(f"Saved model for epoch {epoch}!")
 
-        return train_losses, val_losses
+            epoch_checkpoint = os.path.join(save_path, f"epoch{epoch}_full.pt")
+            torch.save({'epoch': epoch,
+                'model_state_dict': self.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+            }, epoch_checkpoint)
+            torch.save({
+                "epoch": epoch,
+                "model_state_dict": self.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+            }, last_checkpoint)
+            print(f"[CHECKPOINT] Sauvegardé à {epoch_checkpoint}")
+
+        return 
