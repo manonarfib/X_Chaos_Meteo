@@ -32,6 +32,6 @@ for X, y, idx in train_loader:
         print(f"NaN détecté à la date {date} in X")
         
     if torch.isnan(y).any():
-        date = pd.to_datetime(train_dataset.y.time.values[idx])
+        date = pd.to_datetime(train_dataset.Y.time.values[idx])
         print(f"NaN détecté à la date {date} in y")
     i+=1
