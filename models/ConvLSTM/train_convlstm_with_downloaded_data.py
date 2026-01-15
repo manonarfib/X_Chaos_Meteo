@@ -35,6 +35,7 @@ class Config:
     # Training
     n_epochs: int = 3
     lr: float = 1e-3
+    # loss : "mse", "w_mse", "w_dice", "w_mse_and_w_dice"
     loss_type: str = "mse"
 
     # Model
