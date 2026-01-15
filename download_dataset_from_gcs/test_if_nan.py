@@ -7,15 +7,6 @@ import pandas as pd
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device utilisé : {device}")
 
-print("\n[STEP] Création du DataLoader...")
-t3 = time.time()
-
-# train_loader, val_loader, test_loader = make_dataloaders(
-#     train_time_range=("1970-01-01", "2010-01-01"),
-#     val_time_range=("2016-01-01", "2016-01-04"),
-#     test_time_range=("2018-01-01", "2018-01-14"),
-# )
-
 train_dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_train.zarr"
 # val_dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
 T, lead = 8, 1
