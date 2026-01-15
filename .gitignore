@@ -1,3 +1,9 @@
 mini_val_batches.pt
 *.sh
 __pycache__/
+logs/
+checkpoints*/
+demonstrator/demo_outputs/
+*.pt
+*.pth
+*.ckpt
