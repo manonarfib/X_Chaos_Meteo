@@ -241,11 +241,6 @@ def train(cfg: Config):
             y_hat = model(X).squeeze(1)
             loss = compute_loss(y_hat, y, cfg.loss_type)
 
-            if torch.isnan(loss):
-                date = pd.to_datetime(train_dataset.Y.time.values[i])
-                print(f"NaN détecté à la date {date}")
-                continue
-
             (loss / accumulation_steps).backward()
             epoch_loss += loss.item()
             acc_loss += loss / accumulation_steps

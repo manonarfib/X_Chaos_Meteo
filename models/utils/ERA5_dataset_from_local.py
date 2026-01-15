@@ -28,11 +28,10 @@ class ERA5Dataset(Dataset):
     def __init__(self, path, T=8, lead=1, last_n_years=None):
         ds = xr.open_zarr(path, chunks=None)
         
-        invalid_times = pd.date_range(
-            start="2007-09-05 18:00:00",
-            end="2007-09-17 12:00:00",
-            freq="6H"
-        )
+        invalid_times = (
+        pd.date_range(start="2007-09-05 18:00:00", end="2007-09-17 12:00:00", freq="6H")
+        .append(
+            pd.date_range(start="2001-10-11 00:00:00", end="2001-10-27 18:00:00", freq="6H")))
         ds = ds.sel(time=~ds.time.isin(invalid_times))
         
         self.X = ds["X"]
