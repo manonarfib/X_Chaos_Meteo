@@ -6,7 +6,7 @@ import time
 import csv
 import pandas as pd
 from tqdm import tqdm
-from losses import *
+from models.utils.losses import *
 
 
 def _xavier_uniform_(module: nn.Module):  # Initialisation des couches

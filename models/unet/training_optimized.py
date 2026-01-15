@@ -2,12 +2,12 @@ import numpy as np
 import time
 import torch
 import torch.nn as nn
-from model import WFUNet_with_train
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 
-from ERA5_dataset_from_local import ERA5Dataset
+from models.unet.model import WFUNet_with_train
+from models.utils.ERA5_dataset_from_local import ERA5Dataset
 
 if __name__=="__main__":
 
