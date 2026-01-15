@@ -1,4 +1,4 @@
-# Utiliser comme ça :
+# Use like this :
     # dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
     # T, lead = 8, 1
     # batch_size = 2
@@ -30,19 +30,19 @@ class ERA5Dataset(Dataset):
         self.lead = lead
         self.nt = self.X.sizes["time"]
         
-        # last_n_years : pour sélectionner les n dernières années du dataset, plutôt pour débuger
+        # last_n_years : to select the last n years of the dataset, use for debugging preferably
         if last_n_years is not None:
-            # Date de fin du dataset
+            # End date of the datset
             end_date = pd.to_datetime(self.X.time.values[-1])
             start_date = end_date - pd.DateOffset(years=last_n_years-1)
             
-            # Indices correspondant
+            # Corresponding indices
             times = pd.to_datetime(self.X.time.values)
             mask = (times >= start_date)
-            self.start_idx = mask.argmax()  # premier True
+            self.start_idx = mask.argmax()  # first True
             self.nt = self.nt - self.start_idx
             
-            print(f"Filtré pour les {last_n_years} dernières années : {times[self.start_idx]} -> {times[-1]}")
+            print(f"Filtered for the last {last_n_years} years : {times[self.start_idx]} -> {times[-1]}")
         else:
             self.start_idx = 0
 
@@ -57,8 +57,8 @@ class ERA5Dataset(Dataset):
         y = torch.from_numpy(
             self.Y.isel(time=i + self.T + self.lead - 1).values
         )
-        y = torch.clamp(y, min=0.0) # clamp pour ne pas avoir de precip négatives (existe dans ERA5 dû à de l'interpolation)
-        # On retourne i pour connaître la date
+        y = torch.clamp(y, min=0.0) # clamp so there's no negative precipitations (they exist in ERA5 because of interpolation)
+        # Return i to know what dates are in the batch
         return x, y, i
 
 

@@ -4,7 +4,6 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
-# from weatherbench2.regions import SliceRegion
 from dask.diagnostics import ProgressBar
 import dask
 
@@ -27,7 +26,6 @@ print("Europe extracted")
 
 
 # Extract variables
-
 exclude_vars = ["total_precipitation_6hr", "ageostrophic_wind_speed", "divergence"]
 constant_vars = ["latitude", "longitude", "orography", "land_sea_mask"]
 candidate_vars = [v for v in ds_europe.data_vars if v not in exclude_vars]
@@ -41,7 +39,6 @@ precip_mean = precip.mean(dim=("latitude", "longitude"))
 
 
 # Lag function
-
 def lagged_spearman(x, y, lag_steps):
     rhos = []
     for lag in lag_steps:
@@ -57,14 +54,12 @@ lag_steps = [h // 6 for h in lags_hours]
 
 
 # Load precip_mean
-
 with ProgressBar():
     precip_np = precip_mean.compute().values
 print("\nLoaded precip_mean into memory:", precip_np.shape)
 
 
 # Initialize or load partial correlation matrix
-
 csv_file = "spearman_lagged_correlations_partial.csv"
 pkl_file = "spearman_lagged_correlations_partial.pkl"
 
@@ -88,30 +83,30 @@ for var in candidate_vars[30:45]:
     
     corr_matrix = pd.read_csv(csv_file, index_col=0)
 
-    # Si la variable a une dimension 'level', on itère sur chaque niveau
+    #If the variable has a "level" dimension, iterate on each level
     if "level" in da.dims:
         levels = da.level.values
     else:
-        levels = [None]  # variable sans niveau
+        levels = [None]  # variable without level
 
     for idx, lvl in enumerate(levels):
-        # Nom de la ligne dans le DataFrame
+        # Line name in the df
         row_name = f"{var}_{lvl}" if lvl is not None else var
 
-        # Skip si déjà calculé
+        # Skip if already computed
         if row_name in corr_matrix.index and corr_matrix.loc[row_name].notnull().all():
             print(f"{row_name} already computed, skipping...")
             continue
 
         print(f"\nProcessing {row_name}")
 
-        # Sélection du niveau courant
+        # Select the current level
         if lvl is not None:
             da_lvl = da.isel(level=idx)
         else:
             da_lvl = da
 
-        # Variable statique (pas de temps)
+        # Static var (no time dim)
         if "time" not in da_lvl.dims:
             print("  → Static variable")
             da_stack = da_lvl.stack(z=("latitude", "longitude"))
@@ -127,7 +122,7 @@ for var in candidate_vars[30:45]:
             else:
                 corr_matrix.loc[row_name, :] = [rho] * len(lags_hours)
 
-        # Variable temporelle
+        # Temporal var
         else:
             print("  → Temporal variable")
             da_mean = da_lvl.mean(dim=("latitude", "longitude"))
@@ -143,7 +138,7 @@ for var in candidate_vars[30:45]:
                 corr_matrix.loc[row_name, :] = rhos
             print(rhos)
 
-        # Sauvegarde partielle après chaque niveau
+        # Partial save after each level
         corr_matrix.to_csv(csv_file)
         with open(pkl_file, "wb") as f:
             pickle.dump(corr_matrix, f)

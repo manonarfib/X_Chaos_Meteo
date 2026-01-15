@@ -1,6 +1,10 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# File to plot the losses obtained during training and validation. The files must have headers having at least the following var :
+# epoch,batch_idx,loss
+# The loss can have the following format : "tensor(2.6603, device='cuda:0', grad_fn=<AddBackward0>)"
+
 csv_path_train = "checkpoints/train_log.csv"
 csv_path_val = "checkpoints/validation_log.csv"
 df_train = pd.read_csv(csv_path_train)
