@@ -18,7 +18,7 @@ def generate_time_blocks(start_date, end_date, days_per_block=8):
     while current < end:
         next_block = current + timedelta(days=days_per_block-1)
         if next_block > end:
-            break  # on ne crée PAS de bloc incomplet
+            break  # do NOT create incomplete blocks
         blocks.append((
             current.strftime("%Y-%m-%d"),
             next_block.strftime("%Y-%m-%d")
@@ -27,21 +27,21 @@ def generate_time_blocks(start_date, end_date, days_per_block=8):
 
     return blocks
 
-# pour le test :
+# test time blocks :
 TIME_BLOCKS = generate_time_blocks(
     start_date="2020-01-01",
     end_date="2022-01-01",
     days_per_block=8
 )
 
-# pour le val :
+# val time blocks :
 # TIME_BLOCKS = generate_time_blocks(
 #     start_date="2018-01-01",
 #    end_date="2020-01-01",
 #     days_per_block=8
 # )
 
-# pour le train
+# train time blocks :
 # TIME_BLOCKS = generate_time_blocks(
 #     # start_date="1980-01-01",
 #     start_date = "2007-09-16",
@@ -73,7 +73,7 @@ TARGET_VAR = "tp_6h"
 
 # Write optimized zarr
 
-first = True # à changer si relance le fichier
+first = True # chenge if you rerun the file so you don't erase what has previously been downloaded 
 if os.path.exists(OUT_ZARR):
                 ds_out = xr.open_zarr(OUT_ZARR)
                 existing_times = set(ds_out.time.values)
@@ -102,12 +102,12 @@ for start, end in TIME_BLOCKS:
     
     ds2d = ds[DEFAULT_VARS]
 
-    # Variables statiques
+    # Static variables
     lsm = ds["land_sea_mask"].broadcast_like(tp_6h).rename("lsm")
     geo = ds["geopotential_at_surface"].broadcast_like(tp_6h).rename("geo")
     soil = ds["soil_type"].broadcast_like(tp_6h).rename("soil")
     
-    # Variables 3D à certains niveaux
+    # 3D variables selecting only specific levels
     u1000 = ds["u_component_of_wind"].sel(level=1000).drop_vars("level").rename("u1000")
     u925 = ds["u_component_of_wind"].sel(level=925).drop_vars("level").rename("u925")
     u700 = ds["u_component_of_wind"].sel(level=700).drop_vars("level").rename("u700")
@@ -133,10 +133,10 @@ for start, end in TIME_BLOCKS:
     vv700 = ds["vertical_velocity"].sel(level=700).drop_vars("level").rename("vv700") 
     vv500 = ds["vertical_velocity"].sel(level=500).drop_vars("level").rename("vv500") 
 
-    # Concaténer dans un seul dataset
+    # Merge into a single dataset
     ds = xr.merge([tp_6h, ds2d, lsm, geo, soil, u1000, u925, u700, u500, v1000, v925, v700, v500, t1000, t925, t700, t500, rh1000, rh925, rh700, rh500, gws1000, gws925, gws700, gws500, vv1000, vv925, vv700, vv500])
 
-    # empilement
+    # Pile up
     X = (
         ds[INPUT_VARS]
         .to_array(dim="channel")
@@ -166,7 +166,7 @@ for start, end in TIME_BLOCKS:
     ds = xr.Dataset({"X": X, "Y": Y})
 
     if first:
-        print("Nombre de pas de temps :", ds.sizes["time"])
+        print("Number of time steps :", ds.sizes["time"])
         ds.to_zarr(
             OUT_ZARR,
             mode="w",
@@ -177,7 +177,7 @@ for start, end in TIME_BLOCKS:
     else:
         if os.path.exists(OUT_ZARR):
             max_existing_time = ds_out.time.max().values
-            print("Dernier timestamp existant :", max_existing_time)
+            print("Last existing time step :", max_existing_time)
 
             existing_times = set(ds_out.time.values)
             new_times = set(ds.time.values)
@@ -185,7 +185,7 @@ for start, end in TIME_BLOCKS:
             overlap = existing_times & new_times
             # print(overlap)
             if overlap:
-                raise ValueError(f"Overlap temporel détecté : {len(overlap)} timestamps")
+                raise ValueError(f"Temporal overlap detected : {len(overlap)} timestamps")
 
         ds.to_zarr(
             OUT_ZARR,
@@ -194,4 +194,4 @@ for start, end in TIME_BLOCKS:
         )
     print("ds_to_zarr ok")
 
-print("Dataset complet prêt")
+print("Complete dataset ready")
