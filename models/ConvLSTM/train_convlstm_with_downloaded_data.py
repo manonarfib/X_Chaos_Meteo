@@ -8,11 +8,13 @@ import pandas as pd
 import os
 import csv
 import random
+import xarray as xr
 from tqdm import tqdm
 
 from models.utils.losses import WeightedMSELoss, WeightedDiceRegressionLoss
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from convlstm import PrecipConvLSTM
+
 
 random.seed(42)
 
@@ -262,7 +264,7 @@ def main():
                 with torch.no_grad():
                     num_batches_val = len(val_loader)
                     pbar_val = tqdm(val_loader, total=num_batches_val, desc=f"Epoch {epoch}/{n_epochs}", leave=True)
-                    for batch_idx, (Xv, yv) in enumerate(pbar_val):
+                    for batch_idx, (Xv, yv, idx_val) in enumerate(pbar_val):
                         Xv = Xv.to(device, non_blocking=True)
                         yv = yv.to(device, non_blocking=True)
 
