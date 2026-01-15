@@ -215,7 +215,8 @@ class UNet3D(nn.Module):
         conv9 = self.dec9(merge9)
 
         conv9 = F.relu(self.final_conv_2(conv9))
-        out = F.relu(self.final_conv_1(conv9))
+        # out = F.relu(self.final_conv_1(conv9))
+        out = self.final_conv_1(conv9)
 
         return out
 
@@ -368,6 +369,7 @@ class WFUNet_with_train(WFUNet):
         csv_path_val = os.path.join(save_path,"validation_log.csv")
 
         previous_val_b_loss = float("inf")
+        val_batches_loss=0
 
         total_nb_train_batches=len(train_loader)
 
@@ -450,7 +452,7 @@ class WFUNet_with_train(WFUNet):
                        
             epoch_time = time.time() - epoch_start
             avg_loss = epoch_loss / total_nb_train_batches
-            pbar.set_postfix(loss=f"{epoch_loss.item():.3e}", avg=f"{avg_loss:.3e}", bt=f"{batch_time:.2f}s")
+            pbar.set_postfix(loss=f"{epoch_loss:.3e}", avg=f"{avg_loss:.3e}", bt=f"{batch_time:.2f}s")
             print(
                 f"\n>>> Epoch {epoch}/{epochs} terminée "
                 f"- Loss moyen: {avg_loss:.4e} "
