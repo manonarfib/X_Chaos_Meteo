@@ -8,50 +8,40 @@ from scipy.stats import spearmanr
 from dask.diagnostics import ProgressBar
 import dask
 
-# ============================================================
-# 1. LOAD DATA DIRECTLY FROM GOOGLE CLOUD (lazy)
-# ============================================================
+
+
+# load data directly from gcs
 path = "gs://weatherbench2/datasets/era5/1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr"
 ds = xr.open_zarr(path, consolidated=True)
-print("Dataset opened (lazy)")
 
 # Select years
 years = ["2000"]
 ds = ds.sel(time=ds.time.dt.year.isin([int(y) for y in years]))
 
-# ============================================================
-# 2. Define Europe region (lazy slicing)
-# ============================================================
 
-# tp6 = ds["total_precipitation_6hr"].sel(time=date, method="nearest", tolerance="3H")
+# Define Europe region
+
 ds = ds.assign_coords(longitude=(((ds.longitude + 180) % 360) - 180)).sortby("longitude")
 ds_europe = ds.sel(longitude=slice(-12.5, 42.5), latitude=slice(72, 35))
+print("Europe extracted")
 
-# europe_region = SliceRegion(
-#     lat_slice=slice(72, 35),
-#     lon_slice=[slice(347.5, 360), slice(0, 42.5)]
-# )
 
-# ds_europe, weights = europe_region.apply(ds, xr.ones_like(ds.isel(time=0)))
-print("Region extracted (still lazy)")
+# Extract variables
 
-# ============================================================
-# 3. Prepare variables
-# ============================================================
 exclude_vars = ["total_precipitation_6hr", "ageostrophic_wind_speed", "divergence"]
 constant_vars = ["latitude", "longitude", "orography", "land_sea_mask"]
 candidate_vars = [v for v in ds_europe.data_vars if v not in exclude_vars]
 print("Candidate variables:", len(candidate_vars))
 
-# Target variable (lazy)
+# Target variable
 precip = ds_europe["total_precipitation_6hr"]
 
-# Spatial mean (lazy)
+# Spatial mean
 precip_mean = precip.mean(dim=("latitude", "longitude"))
 
-# ============================================================
-# 4. Lag function
-# ============================================================
+
+# Lag function
+
 def lagged_spearman(x, y, lag_steps):
     rhos = []
     for lag in lag_steps:
@@ -65,16 +55,16 @@ def lagged_spearman(x, y, lag_steps):
 lags_hours = [0, 6, 12, 24, 36, 48]
 lag_steps = [h // 6 for h in lags_hours]
 
-# ============================================================
-# 5. Load precip mean into memory
-# ============================================================
+
+# Load precip_mean
+
 with ProgressBar():
     precip_np = precip_mean.compute().values
 print("\nLoaded precip_mean into memory:", precip_np.shape)
 
-# ============================================================
-# 6. Initialize or load partial correlation matrix
-# ============================================================
+
+# Initialize or load partial correlation matrix
+
 csv_file = "spearman_lagged_correlations_partial.csv"
 pkl_file = "spearman_lagged_correlations_partial.pkl"
 
@@ -86,9 +76,9 @@ if os.path.exists(pkl_file):
 else:
     corr_matrix = pd.DataFrame(columns=lags_hours, dtype=float)
 
-# ============================================================
-# 7. Compute correlations with auto-save
-# ============================================================
+
+# Compute correlations with auto-save
+
 def var_has_level(var_name):
     """Return True if variable has a 'level' dimension"""
     return "level" in ds_europe[var_name].dims
@@ -159,17 +149,17 @@ for var in candidate_vars[30:45]:
             pickle.dump(corr_matrix, f)
         print(f"Saved partial results for {row_name}")
 
-# ============================================================
-# 8. Save final results
-# ============================================================
+
+# Save final results
+
 corr_matrix.to_csv("spearman_lagged_correlations_final.csv")
 with open("spearman_lagged_correlations_final.pkl", "wb") as f:
     pickle.dump(corr_matrix, f)
 print("Saved final correlation matrix")
 
-# ============================================================
-# 9. Plot
-# ============================================================
+
+# Plot
+
 import matplotlib.pyplot as plt
 
 plt.figure(figsize=(12, 10))
