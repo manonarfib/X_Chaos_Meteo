@@ -5,14 +5,14 @@ from typing import Tuple, List, Optional
 
 class ConvLSTMCell(nn.Module):
     """
-    Cellule ConvLSTM 2D.
+    Cell ConvLSTM 2D.
 
-    Entrée :
+    Input :
         - x_t : (B, C_in, H, W)
         - h_t : (B, C_hidden, H, W)
         - c_t : (B, C_hidden, H, W)
 
-    Sortie :
+    Output :
         - h_{t+1} : (B, C_hidden, H, W)
         - c_{t+1} : (B, C_hidden, H, W)
     """
@@ -25,12 +25,12 @@ class ConvLSTMCell(nn.Module):
         bias: bool = True,
     ):
         super().__init__()
-        padding = kernel_size // 2  # pour garder H, W constants
+        padding = kernel_size // 2  # To keep H, W constant
 
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
 
-        # Convolution qui produit les 4 "portes" en une fois
+        # Convolution that produces the 4 "doors" at once
         self.conv = nn.Conv2d(
             in_channels=input_channels + hidden_channels,
             out_channels=4 * hidden_channels,
@@ -51,7 +51,7 @@ class ConvLSTMCell(nn.Module):
         combined = torch.cat([x_t, h_prev], dim=1)  # (B, C_in + C_hidden, H, W)
         conv_out = self.conv(combined)  # (B, 4 * C_hidden, H, W)
 
-        # On découpe en 4 blocs de canaux : i, f, o, g
+        # Cut into 4 blocks of channels : i, f, o, g
         cc_i, cc_f, cc_o, cc_g = torch.chunk(conv_out, 4, dim=1)
 
         i = torch.sigmoid(cc_i)
@@ -77,15 +77,15 @@ class ConvLSTMCell(nn.Module):
 
 class ConvLSTM(nn.Module):
     """
-    Bloc ConvLSTM multi-couches.
+    Multi-layer ConvLSTM block.
 
-    Entrée :
-        x : (B, T, C_in, H, W)  si batch_first=True
+    Input :
+        x : (B, T, C_in, H, W)  if batch_first=True
 
-    Sortie (mode par défaut = last_state_only=True) :
+    Output (default mode = last_state_only=True) :
         - h_T : (B, C_hidden_last, H, W)
 
-      ou, si return_sequence=True :
+      or, if return_sequence=True :
         - H_seq : (B, T, C_hidden_last, H, W)
     """
 
@@ -101,7 +101,7 @@ class ConvLSTM(nn.Module):
     ):
         super().__init__()
 
-        assert len(hidden_channels) > 0, "hidden_channels ne doit pas être vide."
+        assert len(hidden_channels) > 0, "hidden_channels must not be empty."
         self.batch_first = batch_first
         self.return_sequence = return_sequence
 
@@ -109,7 +109,7 @@ class ConvLSTM(nn.Module):
             num_layers = len(hidden_channels)
         assert num_layers == len(
             hidden_channels
-        ), "num_layers doit correspondre à la longueur de hidden_channels."
+        ), "num_layers must correspond to the length of hidden_channels."
 
         self.num_layers = num_layers
         self.hidden_channels = hidden_channels
@@ -129,7 +129,7 @@ class ConvLSTM(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        x : (B, T, C_in, H, W) si batch_first=True
+        x : (B, T, C_in, H, W) if batch_first=True
         """
         if not self.batch_first:
             # (T, B, C, H, W) -> (B, T, C, H, W)
@@ -138,7 +138,7 @@ class ConvLSTM(nn.Module):
         B, T, C_in, H, W = x.shape
         device = x.device
 
-        # États cachés initiaux (un par couche)
+        # Initial hidden states (one per layer)
         h_states = []
         c_states = []
         for layer_idx in range(self.num_layers):
@@ -148,43 +148,43 @@ class ConvLSTM(nn.Module):
             h_states.append(h)
             c_states.append(c)
 
-        # On va stocker les sorties de la dernière couche si on veut la séquence
+        # Stock the outputs of the last layer if we want the sequence
         outputs_last_layer = []
 
-        # Boucle temporelle
+        # Temporal loop
         for t in range(T):
             x_t = x[:, t]  # (B, C_in, H, W) ou (B, C_{l-1}, H, W)
-            # Propagation à travers les couches ConvLSTM
+            # Propagation through the ConvLSTM layers
             for layer_idx, cell in enumerate(self.cells):
                 h_prev, c_prev = h_states[layer_idx], c_states[layer_idx]
                 h_t, c_t = cell(x_t, h_prev, c_prev)
                 h_states[layer_idx], c_states[layer_idx] = h_t, c_t
-                # La sortie de cette couche devient l'entrée de la suivante
+                # The output of this layer becomes the input of the next one
                 x_t = h_t
 
-            # À la fin de la dernière couche, x_t = h_t^{(dernier layer)}
+            # At the end of the last layer, x_t = h_t^{(last layer)}
             outputs_last_layer.append(x_t)
 
-        # Empilement temporel
+        # Temporal stacking
         H_seq = torch.stack(outputs_last_layer, dim=1)  # (B, T, C_last, H, W)
 
         if self.return_sequence:
-            return H_seq  # séquence complète
+            return H_seq  # full sequence
         else:
-            # Dernière sortie temporelle seulement
+            # Last temporal output only
             h_T = H_seq[:, -1]  # (B, C_last, H, W)
             return h_T
 
 class PrecipConvLSTM(nn.Module):
     """
-    Modèle ConvLSTM pour prédire une carte de précipitations (tp_6h)
-    à partir d'une séquence d'entrées (multivariées).
+    ConvLSTM model to predict a precipitations map (tp_6h)
+    using a sequence of inputs.
 
-    Entrée :
+    Input :
         X : (B, T_in, C_in, H, W)
 
-    Sortie :
-        y_hat : (B, 1, H, W)  — carte de précipitations prédite pour l'instant cible
+    Output :
+        y_hat : (B, 1, H, W)  — precipitations map predicted for the wanted time.
     """
 
     def __init__(
@@ -200,10 +200,10 @@ class PrecipConvLSTM(nn.Module):
             hidden_channels=hidden_channels,
             kernel_size=kernel_size,
             batch_first=True,
-            return_sequence=False,  # on ne récupère que la dernière sortie temporelle
+            return_sequence=False,  # only keep the last temporal output
         )
 
-        # Projection finale en 1 canal (précipitation)
+        # Final projection in 1 channel (precipitation)
         self.head = nn.Conv2d(
             in_channels=hidden_channels[-1],
             out_channels=1,
@@ -214,23 +214,23 @@ class PrecipConvLSTM(nn.Module):
         """
         x : (B, T_in, C_in, H, W)
         """
-        # Encode la séquence spatio-temporelle
+        # Encode the spatio-temporal sequence
         h_T = self.convlstm(x)  # (B, C_last, H, W)
 
-        # Projection vers une carte de précipitations
+        # Project to a precipitations map
         y_hat = self.head(h_T)  # (B, 1, H, W)
 
         return y_hat
 
 if __name__ == "__main__":
     B = 2          # batch size
-    T_in = 4       # nombre de pas de temps en entrée
-    C_in = 10      # nombre de variables d'entrée (features)
-    H, W = 64, 96  # taille spatiale
+    T_in = 4       # number of time steps temps in input
+    C_in = 10      # number of input variables (features)
+    H, W = 64, 96  # spatial size
 
     model = PrecipConvLSTM(input_channels=C_in)
     x = torch.randn(B, T_in, C_in, H, W)
 
     y_hat = model(x)
     print("Input shape :", x.shape)
-    print("Output shape:", y_hat.shape)  # attendu: (2, 1, 64, 96)
+    print("Output shape:", y_hat.shape)  # expected: (2, 1, 64, 96)
