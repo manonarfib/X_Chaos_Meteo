@@ -14,7 +14,7 @@ import numpy as np
 
 
 class ERA5Dataset(Dataset):        
-    def __init__(self, path, T=8, lead=1, last_n_years=None):
+    def __init__(self, path, T=8, lead=1, last_n_years=None, mean="models/utils/era5_mean.npy", std="models/utils/era5_std.npy"):
         ds = xr.open_zarr(path, chunks=None)
         
         # invalid times : times with nan during the download (merci le DCE 😭)
@@ -29,6 +29,19 @@ class ERA5Dataset(Dataset):
         self.T = T
         self.lead = lead
         self.nt = self.X.sizes["time"]
+        
+        if mean is not None and std is not None:
+            mean = np.load(mean)
+            std  = np.load(std)
+            if isinstance(mean, np.ndarray):
+                mean = torch.from_numpy(mean)
+            if isinstance(std, np.ndarray):
+                std = torch.from_numpy(std)
+            self.mean = mean
+            self.std = std
+        else:
+            self.mean = None
+            self.std = None
         
         # last_n_years : to select the last n years of the dataset, use for debugging preferably
         if last_n_years is not None:
@@ -57,6 +70,11 @@ class ERA5Dataset(Dataset):
         y = torch.from_numpy(
             self.Y.isel(time=i + self.T + self.lead - 1).values
         )
+        
+        if self.mean is not None and self.std is not None:
+            # x shape: (T, C, H, W)
+            x = (x - self.mean[None, :, None, None]) / self.std[None, :, None, None]
+        
         y = torch.clamp(y, min=0.0) # clamp so there's no negative precipitations (they exist in ERA5 because of interpolation)
         # Return i to know what dates are in the batch
         return x, y, i
