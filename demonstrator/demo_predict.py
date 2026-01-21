@@ -83,7 +83,7 @@ def main():
     batch_size = 8
 
     dataset = ERA5Dataset(dataset_path, T=T, lead=lead)    
-    val_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     input_vars = list(dataset.X.coords["channel"].values)
     C_in = len(input_vars)
 
@@ -93,13 +93,13 @@ def main():
         kernel_size=3,
     ).to(device)
 
-    ckpt_path = "checkpoints_w_mse/best_checkpoint_epoch1_batch364.pt"
+    ckpt_path = "checkpoints_w_mse/epoch1_full.pt"
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
     print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {ckpt_path}")
 
-    batch = next(iter(val_loader))
+    batch = next(iter(test_loader))
     X, y = batch[0], batch[1]   # ignore le reste
 
     X = X.to(device, non_blocking=True).float()
@@ -121,13 +121,13 @@ def main():
     save_maps(
         y_true,
         y_pred,
-        out_path="demonstrator/demo_outputs/sample0_maps.png",
+        out_path="demonstrator/demo_outputs/sample0_maps_w_mse.png",
         title_prefix="Val sample 0 - "
     )
     save_boxplot(
         y_true,
         y_pred,
-        out_path="demonstrator/demo_outputs/sample0_boxplot.png",
+        out_path="demonstrator/demo_outputs/sample0_boxplot_w_mse.png",
         title="Val sample 0 – distribution Truth vs Pred"
     )
 

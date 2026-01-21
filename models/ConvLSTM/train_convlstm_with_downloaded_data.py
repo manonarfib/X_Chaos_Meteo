@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from models.utils.losses import WeightedMSELoss, WeightedDiceRegressionLoss
@@ -43,9 +43,9 @@ class Config:
     kernel_size: int = 3
 
     # Logging / checkpoint
-    checkpoint_dir: str = "checkpoints"
-    train_csv: str = "checkpoints/train_log.csv"
-    val_csv: str = "checkpoints/validation_log.csv"
+    checkpoint_dir: str = "checkpoints_mse"
+    train_csv: str = "checkpoints_mse/train_log.csv"
+    val_csv: str = "checkpoints_mse/validation_log.csv"
 
     # Misc
     seed: int = 42
@@ -92,6 +92,19 @@ def compute_loss(output, target, loss_type="w_mse_and_w_dice"):
 
 
 # Data
+class SingleBatchDataset(Dataset):
+    def __init__(self, batch):
+        self.X, self.y, *rest = batch
+        self.rest = rest  # au cas où (idx_, etc.)
+
+    def __len__(self):
+        return self.X.shape[0]
+
+    def __getitem__(self, idx):
+        if self.rest:
+            return self.X[idx], self.y[idx], *(r[idx] for r in self.rest)
+        else:
+            return self.X[idx], self.y[idx]
 
 def create_dataloaders(cfg: Config):
     print("\n[STEP] Dataloader creation...")
@@ -105,6 +118,27 @@ def create_dataloaders(cfg: Config):
     )
     val_loader = DataLoader(
         val_dataset, batch_size=cfg.batch_size, shuffle=False, num_workers=0
+    )
+    
+    # ---- Extraire le premier batch ----
+    train_batch = next(iter(train_loader))
+    val_batch = next(iter(val_loader))
+
+    # ---- Créer des datasets mono-batch ----
+    train_single_dataset = SingleBatchDataset(train_batch)
+    val_single_dataset = SingleBatchDataset(val_batch)
+
+    # ---- DataLoaders compatibles avec ton fit() ----
+    train_loader_one_batch = DataLoader(
+        train_single_dataset,
+        batch_size=cfg.batch_size,
+        shuffle=False
+    )
+
+    val_loader_one_batch = DataLoader(
+        val_single_dataset,
+        batch_size=cfg.batch_size,
+        shuffle=False
     )
 
     input_vars = list(train_dataset.X.coords["channel"].values)
