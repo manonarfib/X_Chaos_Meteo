@@ -93,17 +93,23 @@ def main():
         kernel_size=3,
     ).to(device)
 
-    ckpt_path = "checkpoints_w_mse/epoch1_full.pt"
+    ckpt_path = "checkpoints_w_mse/best_checkpoint_epoch1_batch727.pt"
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
     print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {ckpt_path}")
 
-    batch = next(iter(test_loader))
-    X, y = batch[0], batch[1]   # ignore le reste
+    # batch = next(iter(test_loader))
+    # X, y = batch[0], batch[1]   # ignore le reste
 
-    X = X.to(device, non_blocking=True).float()
-    y = y.to(device, non_blocking=True).float()
+    # X = X.to(device, non_blocking=True).float()
+    # y = y.to(device, non_blocking=True).float()
+    
+    sample_idx = 50
+    X, y, *_ = dataset[sample_idx]
+
+    X = X.unsqueeze(0).to(device).float()  # ajouter dimension batch
+    y = y.unsqueeze(0).to(device).float()
 
     with torch.no_grad():
         y_hat = model(X).squeeze(1)  # (B,H,W)
@@ -121,14 +127,14 @@ def main():
     save_maps(
         y_true,
         y_pred,
-        out_path="demonstrator/demo_outputs/sample0_maps_w_mse.png",
-        title_prefix="Val sample 0 - "
+        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch1_batch727_maps_w_mse.png",
+        title_prefix=f"Test sample {sample_idx} - "
     )
     save_boxplot(
         y_true,
         y_pred,
-        out_path="demonstrator/demo_outputs/sample0_boxplot_w_mse.png",
-        title="Val sample 0 – distribution Truth vs Pred"
+        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch1_batch727_boxplot_w_mse.png",
+        title=f"Test sample {sample_idx} – distribution Truth vs Pred"
     )
 
 
