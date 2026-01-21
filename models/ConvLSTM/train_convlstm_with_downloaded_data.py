@@ -61,7 +61,7 @@ def set_seed(seed: int):
 
 def get_device() -> torch.device:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device utilisé : {device}")
+    print(f"Device used : {device}")
     return device
 
 
@@ -70,8 +70,8 @@ def get_device() -> torch.device:
 def compute_loss(output, target, loss_type="w_mse_and_w_dice"):
     if loss_type in ["w_mse", "w_dice", "w_mse_and_w_dice"]:
         weight = torch.where(
-            target > 0.1,
-            torch.tensor(5.0, device=target.device),
+            target > 2,
+            torch.tensor(10.0, device=target.device),
             torch.tensor(1.0, device=target.device),
         )
     else:
@@ -94,7 +94,7 @@ def compute_loss(output, target, loss_type="w_mse_and_w_dice"):
 # Data
 
 def create_dataloaders(cfg: Config):
-    print("\n[STEP] Création du DataLoader...")
+    print("\n[STEP] Dataloader creation...")
     t0 = time.time()
 
     train_dataset = ERA5Dataset(cfg.train_dataset_path, T=cfg.T, lead=cfg.lead)
@@ -108,9 +108,9 @@ def create_dataloaders(cfg: Config):
     )
 
     input_vars = list(train_dataset.X.coords["channel"].values)
-    print(f"number of input vars : {len(input_vars)}")
-    print(f"Nombre de batches par epoch : {len(train_loader)}")
-    print(f"[DONE] DataLoader créé en {time.time() - t0:.1f} s")
+    print(f"Number of input vars : {len(input_vars)}")
+    print(f"Number of batches per epoch : {len(train_loader)}")
+    print(f"[DONE] DataLoader created in {time.time() - t0:.1f} s")
 
     # Warm-up
     X, y, _ = next(iter(train_loader))
@@ -122,7 +122,7 @@ def create_dataloaders(cfg: Config):
 # Model / Optim
 
 def build_model(cfg: Config, input_channels: int, device: torch.device):
-    print("\n[STEP] Initialisation du modèle PrecipConvLSTM...")
+    print("\n[STEP] Initialisation of PrecipConvLSTM...")
     t0 = time.time()
 
     model = PrecipConvLSTM(
@@ -132,10 +132,10 @@ def build_model(cfg: Config, input_channels: int, device: torch.device):
     ).to(device)
 
     print(
-        "Nombre de paramètres du modèle :",
+        "Number of parameters of the model :",
         sum(p.numel() for p in model.parameters() if p.requires_grad),
     )
-    print(f"[DONE] Modèle initialisé en {time.time() - t0:.2f} s")
+    print(f"[DONE] Modèle initialized in {time.time() - t0:.2f} s")
     return model
 
 
@@ -169,14 +169,14 @@ def save_checkpoint(path, epoch, model, optimizer):
 
 def load_last_checkpoint(path, model, optimizer, device):
     if not os.path.exists(path):
-        print("[CHECKPOINT] Aucun checkpoint trouvé, entraînement depuis le début")
+        print("[CHECKPOINT] No checkpoint found, training starting at the beginning.")
         return 1
 
     checkpoint = torch.load(path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     start_epoch = checkpoint["epoch"] + 1
-    print(f"[CHECKPOINT] Chargé depuis {path}, reprise à l'époque {start_epoch}")
+    print(f"[CHECKPOINT] Loaded from {path}, starting again at epoch {start_epoch}")
     return start_epoch
 
 
@@ -220,7 +220,7 @@ def train(cfg: Config):
 
     previous_val_loss = np.inf
 
-    print("\n[TRAIN] Début de l'entraînement...")
+    print("\n[TRAIN] Training start...")
     t_train = time.time()
 
     for epoch in range(start_epoch, cfg.n_epochs + 1):
@@ -280,7 +280,7 @@ def train(cfg: Config):
         save_checkpoint(f"{cfg.checkpoint_dir}/epoch{epoch}_full.pt", epoch, model, optimizer)
         save_checkpoint(last_checkpoint, epoch, model, optimizer)
 
-    print(f"[TRAIN] Entraînement terminé en {time.time() - t_train:.1f}s")
+    print(f"[TRAIN] Training finished in {time.time() - t_train:.1f}s")
 
 
 

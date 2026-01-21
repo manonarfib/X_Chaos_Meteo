@@ -73,7 +73,7 @@ TARGET_VAR = "tp_6h"
 
 # Write optimized zarr
 
-first = True # chenge if you rerun the file so you don't erase what has previously been downloaded 
+first = True # change if you rerun the file so you don't erase what has previously been downloaded 
 if os.path.exists(OUT_ZARR):
                 ds_out = xr.open_zarr(OUT_ZARR)
                 existing_times = set(ds_out.time.values)
