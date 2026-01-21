@@ -9,7 +9,6 @@ from torch.utils.data import DataLoader, Dataset
 from models.unet.model_without_collapse import WFUNet_with_train
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 
-
 if __name__=="__main__":
 
     np.random.seed(1)
@@ -27,7 +26,7 @@ if __name__=="__main__":
     filters = 32
     dropout = 0
     batch_size = 8
-    epochs = 3
+    epochs = 10
     learning_rate = 1e-5
     # choisir entre w_mse_and_w_dice, w_mse, w_dice or mse
     loss_type = "w_mse_and_w_dice"
@@ -54,8 +53,44 @@ if __name__=="__main__":
     # num_batches = 10
     print(f"Nombre de batches par epoch : {num_batches}")
 
+    class SingleBatchDataset(Dataset):
+        def __init__(self, batch):
+            self.X, self.y, *rest = batch
+            self.rest = rest  # au cas où (idx_, etc.)
+
+        def __len__(self):
+            return self.X.shape[0]
+
+        def __getitem__(self, idx):
+            if self.rest:
+                return self.X[idx], self.y[idx], *(r[idx] for r in self.rest)
+            else:
+                return self.X[idx], self.y[idx]
+
+    # ---- Extraire le premier batch ----
+    train_batch = next(iter(train_loader))
+    val_batch = next(iter(val_loader))
+
+    # ---- Créer des datasets mono-batch ----
+    train_single_dataset = SingleBatchDataset(train_batch)
+    val_single_dataset = SingleBatchDataset(val_batch)
+
+    # ---- DataLoaders compatibles avec ton fit() ----
+    train_loader_one_batch = DataLoader(
+        train_single_dataset,
+        batch_size=batch_size,
+        shuffle=False
+    )
+
+    val_loader_one_batch = DataLoader(
+        val_single_dataset,
+        batch_size=batch_size,
+        shuffle=False
+    )
+
+
     print("Warming up the dataloader")
-    X,y, idx_ = next(iter(train_loader))  # wait until dataloader is ready
+    X,y, idx_ = next(iter(train_loader_one_batch))  # wait until dataloader is ready
     print(X.shape, y.shape)
     feats=X.shape[2]
     lat=X.shape[3]
@@ -77,8 +112,8 @@ if __name__=="__main__":
 
     # ---- Train ---- #
     train_losses, val_losses = model.fit(
-        train_loader=train_loader,
-        val_loader=val_loader,
+        train_loader=train_loader_one_batch,
+        val_loader=val_loader_one_batch,
         optimizer=optimizer,
         scheduler=scheduler,
         epochs=epochs,
@@ -86,5 +121,5 @@ if __name__=="__main__":
         device=device,
         weight_update_interval=weight_update_interval,
         val_loss_calculation_interval=val_loss_calculation_interval,
-        save_path="checkpoints"
+        save_path="checkpoints_one_batch"
     )
