@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
+import argparse
 
 from models.unet.model_without_collapse import WFUNet_with_train
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
@@ -19,7 +20,7 @@ if __name__=="__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # ---- Hyperparameters ---- #
-    n_input_steps=9 #On prend le temps courant et les 8 time steps précédents (48h)
+    n_input_steps=8 #On prend le temps courant et les 8 time steps précédents (48h)
     lead_steps=1 #On prédit pour 6h après
     lags=n_input_steps
     # feats = 1 #nombre de variables d'entrée
@@ -28,9 +29,9 @@ if __name__=="__main__":
     dropout = 0
     batch_size = 8
     epochs = 3
-    learning_rate = 1e-5
+    learning_rate = 1e-3
     # choisir entre w_mse_and_w_dice, w_mse, w_dice or mse
-    loss_type = "w_mse_and_w_dice"
+    loss_type = "mse"
     weight_update_interval=120 #maj poids tous les mois
     val_loss_calculation_interval=4*720 #calcul loss tous les 2 ans
 
@@ -75,6 +76,30 @@ if __name__=="__main__":
         patience=3,       # on attend 2 évaluations sans amélioration
     )
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--save_path",
+        type=str,
+        default="checkpoints",
+        help="Chemin où sauvegarder les checkpoints"
+    )
+    args = parser.parse_args()
+
+    save_path = args.save_path
+
+    print("n_input_steps=",n_input_steps)
+    print("lead_steps=", lead_steps)
+    print("lags=", lags)
+    print("feats_out=", feats_out)
+    print("filters=", filters)
+    print("dropout=", dropout)
+    print("batch_size=", batch_size)
+    print("epochs=", epochs)
+    print("learning_rate=",learning_rate)
+    print("loss_type=", loss_type)
+    print("weight_update_interval=", weight_update_interval)
+    print("val_loss_calculation_interval=", val_loss_calculation_interval)   
+
     # ---- Train ---- #
     train_losses, val_losses = model.fit(
         train_loader=train_loader,
@@ -86,5 +111,5 @@ if __name__=="__main__":
         device=device,
         weight_update_interval=weight_update_interval,
         val_loss_calculation_interval=val_loss_calculation_interval,
-        save_path="checkpoints"
+        save_path=save_path
     )

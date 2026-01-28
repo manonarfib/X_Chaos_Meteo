@@ -168,9 +168,11 @@ class UNet3D(nn.Module):
         self._built = True
 
     def forward(self, x):
-        # x: (B, C=features, D=lags, H, W)
+        # x: (B, D=lags, C=features, H, W)
         if not self._built:
             self._build()
+
+        print("SHAPE X", x.shape)
 
         # --- Encoder ---
         conv1 = self.enc1(x)
@@ -184,6 +186,10 @@ class UNet3D(nn.Module):
 
         conv4 = self.enc4(pool3)
         drop4 = self.drop4(conv4)
+
+        print("conv1", conv1.shape)
+        print("pool1", pool1.shape)
+        print("conv2", conv2.shape)
 
         # --- Bottleneck ---
         pool4 = self.pool(drop4)
@@ -217,6 +223,8 @@ class UNet3D(nn.Module):
         conv9 = F.relu(self.final_conv_2(conv9))
         # out = F.relu(self.final_conv_1(conv9))
         out = self.final_conv_1(conv9)
+        print("conv9", conv9.shape)
+        print("out", out.shape)
 
         return out
 
@@ -337,8 +345,8 @@ class WFUNet_with_train(WFUNet):
                 x = x.to(device)
                 target = target.to(device)
                 output = self(x)
-                print("OUTPUT", output)
-                print("TARGET", target)
+                print("OUTPUT", output.shape)
+                print("TARGET", target.shape)
                 loss = self.compute_loss(output, target, loss_type)
                 total_loss += loss.item() * x.size(0)
 
@@ -430,7 +438,8 @@ class WFUNet_with_train(WFUNet):
                     val_batches_loss = self.evaluate(val_loader, loss_type, device)
 
                     if previous_val_b_loss>val_batches_loss:
-                        best_checkpoint = os.path.join(save_path, f"best_checkpoint_epoch{epoch}_batch_idx{batch_idx}.pt")
+                        # best_checkpoint = os.path.join(save_path, f"best_checkpoint_epoch{epoch}_batch_idx{batch_idx}.pt")
+                        best_checkpoint = os.path.join(save_path, f"best_checkpoint.pt")
                         torch.save({
                             "epoch": epoch,
                             "model_state_dict": self.state_dict(),
@@ -459,19 +468,19 @@ class WFUNet_with_train(WFUNet):
                 f"- Temps epoch: {epoch_time:.1f}s\n"
             )
 
-            torch.save(self.state_dict(), os.path.join(save_path, f"epoch_{epoch}.pt"))
+            # torch.save(self.state_dict(), os.path.join(save_path, f"epoch_{epoch}.pt"))
             print(f"Saved model for epoch {epoch}!")
 
             epoch_checkpoint = os.path.join(save_path, f"epoch{epoch}_full.pt")
-            torch.save({'epoch': epoch,
-                'model_state_dict': self.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-            }, epoch_checkpoint)
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": self.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-            }, last_checkpoint)
+            # torch.save({'epoch': epoch,
+            #     'model_state_dict': self.state_dict(),
+            #     'optimizer_state_dict': optimizer.state_dict(),
+            # }, epoch_checkpoint)
+            # torch.save({
+            #     "epoch": epoch,
+            #     "model_state_dict": self.state_dict(),
+            #     "optimizer_state_dict": optimizer.state_dict(),
+            # }, last_checkpoint)
             print(f"[CHECKPOINT] Sauvegardé à {epoch_checkpoint}")
 
         return 

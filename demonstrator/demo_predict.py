@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from models.utils.ERA5_dataset_from_local import  ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
+from models.unet.model_without_collapse import WFUNet_with_train
 
 
 import os
@@ -87,13 +88,17 @@ def main():
     input_vars = list(dataset.X.coords["channel"].values)
     C_in = len(input_vars)
 
-    model = PrecipConvLSTM(
-        input_channels=C_in,
-        hidden_channels=[32, 64],
-        kernel_size=3,
-    ).to(device)
+    # model = PrecipConvLSTM(
+    #     input_channels=C_in,
+    #     hidden_channels=[32, 64],
+    #     kernel_size=3,
+    # ).to(device)
 
-    ckpt_path = "checkpoints_w_mse/best_checkpoint_epoch1_batch727.pt"
+    model = WFUNet_with_train(8, 149, 221, 33, 1,
+                              8, 32, 0).to(device)
+
+
+    ckpt_path = "checkpoints/run_139411/checkpoint_last.pt"
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()

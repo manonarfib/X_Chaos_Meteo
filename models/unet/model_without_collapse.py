@@ -6,7 +6,7 @@ import time
 import csv
 import pandas as pd
 from tqdm import tqdm
-from losses import *
+from models.utils.losses import *
 
 
 def _xavier_uniform_(module: nn.Module):  # Initialisation des couches
@@ -162,16 +162,11 @@ class UNet3D(nn.Module):
             2 * self.features_output, self.features_output, kernel_size=1)
         self.compress_final=LagConv3d(self.features_output, self.features_output, lags=self.lags)
 
-        self._built = False
-
-    def _build(self):
         _xavier_uniform_(self)
-        self._built = True
+
 
     def forward(self, x):
         # x: (B, C=features, D=lags, H, W)
-        if not self._built:
-            self._build()
 
         # --- Encoder ---
         conv1 = self.enc1(x)
@@ -318,6 +313,7 @@ class WFUNet(nn.Module):
 
         out = self.unet(x)  # UNet traite toutes les features en une seule passe
         out = out[..., :H_orig, :W_orig]  # enlever le padding
+        out=out.squeeze(1)
 
         return out
 
@@ -366,15 +362,14 @@ class WFUNet_with_train(WFUNet):
         num_batches_val = len(val_loader)
 
         with torch.no_grad():
-            pbar_val = tqdm(val_loader, total=num_batches_val, leave=True)
-            for batchid, (x, target, i) in enumerate(pbar_val):
+            for x, target, i in tqdm(val_loader, total=num_batches_val, leave=True):
                 x = x.to(device)
                 target = target.to(device)
-                output = self(x)
+                output = self(x).squeeze(1)
                 loss = self.compute_loss(output, target, loss_type)
-                total_loss += loss.item() * x.size(0)
+                total_loss += loss.item()
 
-        return total_loss / len(val_loader.dataset)
+        return total_loss / len(val_loader)
 
     # ---------------------------------------------------------------------
     #  COMPLETE TRAINING LOOP
@@ -425,7 +420,7 @@ class WFUNet_with_train(WFUNet):
                 x = x.to(device)
                 target = target.to(device)
 
-                output = self(x)
+                output = self(x).squeeze(1)
 
                 raw_loss = self.compute_loss(output, target, loss_type)
 
@@ -437,8 +432,9 @@ class WFUNet_with_train(WFUNet):
                     optimizer.step()
                     optimizer.zero_grad()
 
-                    print("OUTPUT", output)
-                    print("TARGET", target)
+                    print("OUTPUT", output.min(), output.max(), output.std())
+                    print("TARGET", target.min(), target.max(), target.std())
+                    print(output.shape, target.shape)
 
                     batch_time = time.time() - batch_start
                     print(
