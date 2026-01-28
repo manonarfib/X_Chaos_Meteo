@@ -7,3 +7,4 @@ demonstrator/demo_outputs/
 *.pt
 *.pth
 *.ckpt
+demonstrator/ig*/
