@@ -12,6 +12,9 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
+from dataclasses import asdict
+import pprint
+
 from models.utils.losses import WeightedMSELoss, WeightedDiceRegressionLoss
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
@@ -43,9 +46,18 @@ class Config:
     kernel_size: int = 3
 
     # Logging / checkpoint
+<<<<<<< HEAD
     checkpoint_dir: str = "checkpoints_mse"
     train_csv: str = "checkpoints_mse/train_log.csv"
     val_csv: str = "checkpoints_mse/validation_log.csv"
+=======
+    checkpoint_dir: str = "checkpoints_input_all_lead"
+    train_csv: str = "checkpoints_input_all_lead/train_log.csv"
+    val_csv: str = "checkpoints_input_all_lead/validation_log.csv"
+    
+    without_precip: bool = False 
+    max_lead: int = 8 # put to 0 if you want to only predict at one lead times
+>>>>>>> 6da88ad (add feature permutation and training without precip or predict several lead times)
 
     # Misc
     seed: int = 42
@@ -110,8 +122,8 @@ def create_dataloaders(cfg: Config):
     print("\n[STEP] Dataloader creation...")
     t0 = time.time()
 
-    train_dataset = ERA5Dataset(cfg.train_dataset_path, T=cfg.T, lead=cfg.lead)
-    val_dataset = ERA5Dataset(cfg.val_dataset_path, T=cfg.T, lead=cfg.lead)
+    train_dataset = ERA5Dataset(cfg.train_dataset_path, T=cfg.T, lead=cfg.lead, without_precip=cfg.without_precip, max_lead=cfg.max_lead)
+    val_dataset = ERA5Dataset(cfg.val_dataset_path, T=cfg.T, lead=cfg.lead, without_precip=cfg.without_precip, max_lead=cfg.max_lead)
 
     train_loader = DataLoader(
         train_dataset, batch_size=cfg.batch_size, shuffle=True, num_workers=0
@@ -155,7 +167,7 @@ def create_dataloaders(cfg: Config):
 
 # Model / Optim
 
-def build_model(cfg: Config, input_channels: int, device: torch.device):
+def build_model(cfg: Config, input_channels: int, device: torch.device, output_size=0):
     print("\n[STEP] Initialisation of PrecipConvLSTM...")
     t0 = time.time()
 
@@ -163,6 +175,7 @@ def build_model(cfg: Config, input_channels: int, device: torch.device):
         input_channels=input_channels,
         hidden_channels=list(cfg.hidden_channels),
         kernel_size=cfg.kernel_size,
+        output_size=output_size,
     ).to(device)
 
     print(
@@ -231,15 +244,22 @@ def run_validation(model, val_loader, device, loss_type):
 
     return total_loss / len(val_loader)
 
+def print_config(cfg: Config):
+    print("\n" + "=" * 80)
+    print("TRAINING CONFIGURATION")
+    print("=" * 80)
+    pprint.pprint(asdict(cfg), sort_dicts=False)
+    print("=" * 80 + "\n")
 
 # Training
 
 def train(cfg: Config):
+    print_config(cfg)
     set_seed(cfg.seed)
     device = get_device()
 
     train_loader, val_loader, train_dataset, input_vars = create_dataloaders(cfg)
-    model = build_model(cfg, len(input_vars), device)
+    model = build_model(cfg, len(input_vars), device, output_size=cfg.max_lead)
     optimizer, scheduler = build_optimizer(model, cfg)
 
     init_csv(cfg.train_csv, ["epoch", "batch_idx", "loss"])

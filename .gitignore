@@ -8,3 +8,6 @@ demonstrator/demo_outputs/
 *.pth
 *.ckpt
 demonstrator/ig*/
+logs
+permutation_importance_*
+checkpoints*

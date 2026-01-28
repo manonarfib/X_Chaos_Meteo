@@ -192,6 +192,7 @@ class PrecipConvLSTM(nn.Module):
         input_channels: int,
         hidden_channels: List[int] = [64, 32, 16],
         kernel_size: int = 3,
+        output_size=1
     ):
         super().__init__()
 
@@ -206,7 +207,7 @@ class PrecipConvLSTM(nn.Module):
         # Final projection in 1 channel (precipitation)
         self.head = nn.Conv2d(
             in_channels=hidden_channels[-1],
-            out_channels=1,
+            out_channels=output_size,
             kernel_size=1,
         )
 
