@@ -14,7 +14,7 @@ import numpy as np
 
 
 class ERA5Dataset(Dataset):        
-    def __init__(self, path, T=8, lead=1, last_n_years=None, mean="models/utils/era5_mean.npy", std="models/utils/era5_std.npy"):
+    def __init__(self, path, T=8, lead=1, last_n_years=None, mean="models/utils/era5_mean.npy", std="models/utils/era5_std.npy", without_precip=False, max_lead=0):
         ds = xr.open_zarr(path, chunks=None)
         
         # invalid times : times with nan during the download (merci le DCE 😭)
@@ -24,25 +24,35 @@ class ERA5Dataset(Dataset):
             pd.date_range(start="2001-10-11 00:00:00", end="2001-10-27 18:00:00", freq="6H")))
         ds = ds.sel(time=~ds.time.isin(invalid_times))
         
-        self.X = ds["X"]
+        channels = list(ds["X"].channel.values)
+
+        if without_precip:
+            assert "tp_6h" in channels, "tp_6h not found in X channels"
+            mask = [c != "tp_6h" for c in channels]
+            channels = [c for c in channels if c != "tp_6h"]
+        else:
+            mask = None
+        
+        self.X = ds["X"].sel(channel=channels)    
         self.Y = ds["Y"]
         self.T = T
         self.lead = lead
+        self.max_lead = max_lead
         self.nt = self.X.sizes["time"]
         
         if mean is not None and std is not None:
-            mean = np.load(mean)
-            std  = np.load(std)
-            if isinstance(mean, np.ndarray):
-                mean = torch.from_numpy(mean)
-            if isinstance(std, np.ndarray):
-                std = torch.from_numpy(std)
+            mean = torch.from_numpy(np.load(mean))
+            std = torch.from_numpy(np.load(std))
+
+            if mask is not None:
+                mean = mean[mask]
+                std = std[mask]
+
             self.mean = mean
             self.std = std
         else:
             self.mean = None
             self.std = None
-        
         # last_n_years : to select the last n years of the dataset, use for debugging preferably
         if last_n_years is not None:
             # End date of the datset
@@ -60,16 +70,26 @@ class ERA5Dataset(Dataset):
             self.start_idx = 0
 
     def __len__(self):
-        return self.nt - self.T - self.lead + 1
+        if self.max_lead!=0:
+            return self.nt - self.T - self.max_lead + 1
+        else:
+            return self.nt - self.T - self.lead + 1
 
     def __getitem__(self, i):
         i = i + self.start_idx
         x = torch.from_numpy(
             self.X.isel(time=slice(i, i + self.T)).values
         )
-        y = torch.from_numpy(
-            self.Y.isel(time=i + self.T + self.lead - 1).values
-        )
+        if self.max_lead!=0:
+            y = torch.from_numpy(
+                    self.Y.isel(
+                        time=slice(i + self.T, i + self.T + self.max_lead)
+                    ).values
+                )  # shape: (L, H, W)
+        else:    
+            y = torch.from_numpy(
+                self.Y.isel(time=i + self.T + self.lead - 1).values
+            )
         
         if self.mean is not None and self.std is not None:
             # x shape: (T, C, H, W)
