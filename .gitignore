@@ -10,3 +10,4 @@ demonstrator/demo_outputs/
 logs
 permutation_importance_*
 checkpoints*
+explainability/ig_maps/
