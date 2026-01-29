@@ -19,9 +19,9 @@ class ERA5Dataset(Dataset):
         
         # invalid times : times with nan during the download (merci le DCE 😭)
         invalid_times = (
-        pd.date_range(start="2007-09-05 18:00:00", end="2007-09-17 12:00:00", freq="6H")
+        pd.date_range(start="2007-09-05 18:00:00", end="2007-09-17 12:00:00", freq="6h")
         .append(
-            pd.date_range(start="2001-10-11 00:00:00", end="2001-10-27 18:00:00", freq="6H")))
+            pd.date_range(start="2001-10-11 00:00:00", end="2001-10-27 18:00:00", freq="6h")))
         ds = ds.sel(time=~ds.time.isin(invalid_times))
         
         channels = list(ds["X"].channel.values)
