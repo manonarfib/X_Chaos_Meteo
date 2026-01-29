@@ -31,7 +31,7 @@ if __name__=="__main__":
     epochs = 3
     learning_rate = 1e-3
     # choisir entre w_mse_and_w_dice, w_mse, w_dice or mse
-    loss_type = "mse"
+    loss_type = "wmse"
     weight_update_interval=120 #maj poids tous les mois
     val_loss_calculation_interval=4*720 #calcul loss tous les 2 ans
 

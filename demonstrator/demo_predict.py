@@ -98,7 +98,7 @@ def main():
                               8, 32, 0).to(device)
 
 
-    ckpt_path = "checkpoints/run_139411/checkpoint_last.pt"
+    ckpt_path = "checkpoints/run_140292/epoch1_full.pt"
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
@@ -132,13 +132,13 @@ def main():
     save_maps(
         y_true,
         y_pred,
-        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch1_batch727_maps_w_mse.png",
+        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch1_full_maps_w_mse.png",
         title_prefix=f"Test sample {sample_idx} - "
     )
     save_boxplot(
         y_true,
         y_pred,
-        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch1_batch727_boxplot_w_mse.png",
+        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch1_full_boxplot_w_mse.png",
         title=f"Test sample {sample_idx} – distribution Truth vs Pred"
     )
 
