@@ -76,6 +76,45 @@ def save_lineplot(values, out_path, title="", xlabel="t index (0..T-1)", ylabel=
     plt.close(fig)
     print(f"[FIG] Saved: {out_path}")
 
+def save_barplot_mean_std(mean_vals, std_vals, labels, out_path, title="", top_k=15):
+    mean_vals = np.asarray(mean_vals)
+    std_vals = np.asarray(std_vals)
+
+    idx = np.argsort(-mean_vals)[:top_k]
+    m = mean_vals[idx][::-1]
+    s = std_vals[idx][::-1]
+    l = [labels[i] for i in idx][::-1]
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.barh(range(len(m)), m, xerr=s)
+    ax.set_yticks(range(len(m)))
+    ax.set_yticklabels(l)
+    ax.set_title(title)
+    ax.set_xlabel("Importance (mean ± std over samples)")
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"[FIG] Saved: {out_path}")
+
+
+def save_lineplot_mean_std(mean_vals, std_vals, out_path, title="", xlabel="t index", ylabel="Importance"):
+    mean_vals = np.asarray(mean_vals)
+    std_vals = np.asarray(std_vals)
+    x = np.arange(len(mean_vals))
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.plot(x, mean_vals, marker="o")
+    ax.fill_between(x, mean_vals - std_vals, mean_vals + std_vals, alpha=0.25)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, linestyle="--", linewidth=0.5)
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"[FIG] Saved: {out_path}")
 
 def plot_tp_attr_contour(
     tp_map: np.ndarray,
@@ -378,6 +417,96 @@ def grad_x_input(model, x, target="region_sum", region_mask=None):
     S.backward()
     return x_req.grad.detach() * x_req.detach()
 
+def compute_importance_over_random_samples(
+    model,
+    dataset,
+    input_vars,
+    device,
+    n_samples=100,
+    seed=0,
+    method="ig",
+    steps=30,
+    baseline_mode="zeros",
+    region_quantile=0.90,
+):
+    """
+    Returns:
+      var_mean, var_std  (C,)
+      time_mean, time_std (T,)
+      chosen_indices (n_samples,)
+    """
+    rng = np.random.default_rng(seed)
+    N = len(dataset)
+    chosen = rng.choice(N, size=min(n_samples, N), replace=False)
+
+    C = len(input_vars)
+    T = dataset.T if hasattr(dataset, "T") else None  # fallback
+    # We'll infer T from first sample
+    X0, *_ = dataset[int(chosen[0])]
+    T = X0.shape[0]
+
+    var_all = []
+    time_all = []
+
+    model.eval()
+
+    for k, idx in enumerate(chosen, start=1):
+        X, y, *_ = dataset[int(idx)]
+        X = X.unsqueeze(0).to(device).float()  # (1,T,C,H,W)
+
+        # predict -> define region mask from prediction
+        with torch.no_grad():
+            y_hat = model(X)
+            if y_hat.dim() == 3:
+                y_hat = y_hat.unsqueeze(1)  # (1,1,H,W)
+
+            pred_map = y_hat[0, 0]
+            thresh = torch.quantile(pred_map.flatten(), region_quantile)
+            region = (pred_map >= thresh).float()
+            region_mask = region.unsqueeze(0).unsqueeze(0)  # (1,1,H,W)
+
+        # attribution
+        if method == "ig":
+            baseline = make_baseline(X, mode=baseline_mode)
+            attr = integrated_gradients(
+                model=model,
+                x=X,
+                baseline=baseline,
+                steps=steps,
+                target="region_sum",
+                region_mask=region_mask,
+            )
+        elif method == "gradxinput":
+            attr = grad_x_input(
+                model=model,
+                x=X,
+                target="region_sum",
+                region_mask=region_mask,
+            )
+        else:
+            raise ValueError("method must be 'ig' or 'gradxinput'")
+
+        attr_abs = attr.abs()  # (1,T,C,H,W)
+
+        # var importance: sum over T,H,W -> (C,)
+        var_imp = attr_abs.sum(dim=(1, 3, 4))[0].detach().cpu().numpy()
+        # time importance: sum over C,H,W -> (T,)
+        time_imp = attr_abs.sum(dim=(2, 3, 4))[0].detach().cpu().numpy()
+
+        var_all.append(var_imp)
+        time_all.append(time_imp)
+
+        if k % 10 == 0:
+            print(f"[AGG] {k}/{len(chosen)} samples processed")
+
+    var_all = np.stack(var_all, axis=0)   # (N,C)
+    time_all = np.stack(time_all, axis=0) # (N,T)
+
+    return (
+        var_all.mean(axis=0), var_all.std(axis=0),
+        time_all.mean(axis=0), time_all.std(axis=0),
+        chosen
+    )
 
 # ----------------------------
 # Main
@@ -425,6 +554,66 @@ def main():
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
     print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {ckpt_path}")
+
+    # ---- output dir ----
+    out_dir = "explainability/ig_outputs_mse_viz"
+    os.makedirs(out_dir, exist_ok=True)
+
+    # ---- aggregate importance over many random test samples ----
+    n_agg = 100
+    agg_seed = 0
+
+    agg_dir = os.path.join(out_dir, f"aggregate_{method}_{n_agg}")
+    os.makedirs(agg_dir, exist_ok=True)
+
+    v_mean, v_std, t_mean, t_std, chosen_idx = compute_importance_over_random_samples(
+        model=model,
+        dataset=dataset,
+        input_vars=input_vars,
+        device=device,
+        n_samples=n_agg,
+        seed=agg_seed,
+        method=method,
+        steps=steps,
+        baseline_mode=baseline_mode,
+        region_quantile=region_quantile,
+    )
+
+    # Save chosen indices for reproducibility
+    np.save(os.path.join(agg_dir, "chosen_indices.npy"), chosen_idx)
+
+    # Plots
+    save_barplot(
+        v_mean,
+        labels=input_vars,
+        out_path=os.path.join(agg_dir, "var_importance_mean.png"),
+        title=f"{method.upper()} variable importance (MEAN over {len(chosen_idx)} samples)",
+        top_k=20,
+    )
+    save_barplot_mean_std(
+        v_mean, v_std,
+        labels=input_vars,
+        out_path=os.path.join(agg_dir, "var_importance_mean_std.png"),
+        title=f"{method.upper()} variable importance (mean ± std over {len(chosen_idx)} samples)",
+        top_k=20,
+    )
+
+    save_lineplot(
+        t_mean,
+        out_path=os.path.join(agg_dir, "time_importance_mean.png"),
+        title=f"{method.upper()} time importance (MEAN over {len(chosen_idx)} samples)",
+        xlabel="t index in input window (0..T-1, past→present)",
+        ylabel="Importance (mean sum abs attribution)",
+    )
+    save_lineplot_mean_std(
+        t_mean, t_std,
+        out_path=os.path.join(agg_dir, "time_importance_mean_std.png"),
+        title=f"{method.upper()} time importance (mean ± std over {len(chosen_idx)} samples)",
+        xlabel="t index in input window (0..T-1, past→present)",
+        ylabel="Importance (sum abs attribution)",
+    )
+
+    print("[AGG DONE] Aggregate plots written to:", agg_dir)
 
     # ---- sample ----
     X, y, *_ = dataset[sample_idx]
@@ -480,21 +669,17 @@ def main():
     var_importance = attr_abs.sum(dim=(1, 3, 4))[0].detach().cpu().numpy()  # sum over T,H,W -> (C,)
     time_importance = attr_abs.sum(dim=(2, 3, 4))[0].detach().cpu().numpy()  # sum over C,H,W -> (T,)
 
-    # ---- output dir ----
-    out_dir = "explainability/ig_outputs_mse_viz"
-    os.makedirs(out_dir, exist_ok=True)
-
     # ---- plots: importance ----
     save_barplot(
         var_importance,
         labels=input_vars,
-        out_path=os.path.join(out_dir, f"sample{sample_idx}_{method}_var_importance.png"),
+        out_path=os.path.join(out_dir, f"sample{sample_idx}/{method}_var_importance.png"),
         title=f"{method.upper()} variable importance (sum abs over T,H,W)\nSample {sample_idx}",
         top_k=15,
     )
     save_lineplot(
         time_importance,
-        out_path=os.path.join(out_dir, f"sample{sample_idx}_{method}_time_importance.png"),
+        out_path=os.path.join(out_dir, f"sample{sample_idx}/{method}_time_importance.png"),
         title=f"{method.upper()} time importance (sum abs over C,H,W)\nSample {sample_idx}",
         xlabel="t index in input window (0..T-1, past→present)",
         ylabel="Importance (sum abs attribution)",
@@ -523,7 +708,7 @@ def main():
         tp_map=tp_in,
         attr_map=spatial_all,
         europe_mask=europe_mask,
-        out_path=os.path.join(out_dir, f"sample{sample_idx}_{method}_ALL_tp_t{t_view}_contour.png"),
+        out_path=os.path.join(out_dir, f"sample{sample_idx}/{method}_ALL_tp_t{t_view}_contour.png"),
         title=f"Sample {sample_idx} | ALL vars (sum over T,C) | method={method}",
         tp_title=f"{tp_name} input (t={t_view})",
         attr_title=f"{method.upper()} abs attribution (sum over T,C)",
@@ -548,7 +733,7 @@ def main():
             var_name=var_name,
             attr_map=attr_c,
             europe_mask=europe_mask,
-            out_path=os.path.join(out_dir, f"sample{sample_idx}_{method}_top{rank}_{var_name}_tp_t{t_view}.png"),
+            out_path=os.path.join(out_dir, f"sample{sample_idx}/{method}_top{rank}_{var_name}_tp_t{t_view}.png"),
             title=f"Sample {sample_idx} | Top-{rank} variable: {var_name} | method={method}",
             tp_title=f"{tp_name} input (t={t_view})",
             attr_title=f"{method.upper()} abs attribution for {var_name} (sum over T)",
