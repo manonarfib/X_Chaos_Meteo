@@ -28,7 +28,7 @@ class Config:
     train_dataset_path: str = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_train.zarr"
     val_dataset_path: str = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
     T: int = 8
-    lead: int = 1
+    lead: int = 4
     batch_size: int = 16
     
     # Steps
@@ -38,7 +38,7 @@ class Config:
     # Training
     n_epochs: int = 3
     lr: float = 1e-3
-    # loss : "mse", "w_mse", "w_dice", "w_mse_and_w_dice"
+    # loss : "mse", "w_mse", "w_dice", "w_mse_and_w_dice", "mse_and_w_dice"
     loss_type: str = "mse"
 
     # Model
@@ -46,9 +46,9 @@ class Config:
     kernel_size: int = 3
 
     # Logging / checkpoint
-    checkpoint_dir: str = "checkpoints_input_wout_precip"
-    train_csv: str = "checkpoints_input_wout_precip/train_log.csv"
-    val_csv: str = "checkpoints_input_wout_precip/validation_log.csv"
+    checkpoint_dir: str = "checkpoints_mse_24h"
+    train_csv: str = "checkpoints_mse_24h/train_log.csv"
+    val_csv: str = "checkpoints_mse_24h/validation_log.csv"
     
     without_precip: bool = True # put to False for og config 
     max_lead: int = 1 # put to 1 if you want to only predict at one lead times, 8 to predict up to 48h
@@ -74,7 +74,7 @@ def get_device() -> torch.device:
 # Loss
 
 def compute_loss(output, target, loss_type="w_mse_and_w_dice"):
-    if loss_type in ["w_mse", "w_dice", "w_mse_and_w_dice"]:
+    if loss_type in ["w_mse", "w_dice", "w_mse_and_w_dice", "mse_and_w_dice"]:
         weight = torch.where(
             target > 2,
             torch.tensor(10.0, device=target.device),
@@ -85,6 +85,11 @@ def compute_loss(output, target, loss_type="w_mse_and_w_dice"):
 
     if loss_type == "w_mse_and_w_dice":
         loss_mse = WeightedMSELoss()(output, target, weight)
+        loss_dice = WeightedDiceRegressionLoss()(output, target, weight)
+        return 0.7 * loss_mse + 0.3 * loss_dice
+    
+    if loss_type == "mse_and_w_dice":
+        loss_mse = WeightedMSELoss()(output, target)
         loss_dice = WeightedDiceRegressionLoss()(output, target, weight)
         return 0.7 * loss_mse + 0.3 * loss_dice
 
