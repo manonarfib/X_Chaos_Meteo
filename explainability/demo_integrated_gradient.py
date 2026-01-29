@@ -246,7 +246,7 @@ def main():
     spatial_attr = ig_abs.sum(dim=(1, 2))  # (B,H,W)
     spatial_attr = spatial_attr[0].detach().cpu().numpy()
 
-    out_dir = "demonstrator/ig_outputs_mse"
+    out_dir = "explainability/ig_outputs_mse"
     os.makedirs(out_dir, exist_ok=True)
 
     # Save spatial attribution heatmap

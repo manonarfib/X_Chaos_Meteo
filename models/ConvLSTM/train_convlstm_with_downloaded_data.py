@@ -50,7 +50,7 @@ class Config:
     train_csv: str = "checkpoints_mse_24h/train_log.csv"
     val_csv: str = "checkpoints_mse_24h/validation_log.csv"
     
-    without_precip: bool = True # put to False for og config 
+    without_precip: bool = False # put to False for og config 
     max_lead: int = 1 # put to 1 if you want to only predict at one lead times, 8 to predict up to 48h
 
     # Misc

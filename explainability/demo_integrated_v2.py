@@ -481,7 +481,7 @@ def main():
     time_importance = attr_abs.sum(dim=(2, 3, 4))[0].detach().cpu().numpy()  # sum over C,H,W -> (T,)
 
     # ---- output dir ----
-    out_dir = "demonstrator/ig_outputs_mse_viz"
+    out_dir = "explainability/ig_outputs_mse_viz"
     os.makedirs(out_dir, exist_ok=True)
 
     # ---- plots: importance ----

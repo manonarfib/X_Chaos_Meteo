@@ -11,4 +11,4 @@ demonstrator/ig*/
 logs
 permutation_importance_*
 checkpoints*
-explainability/ig_maps/
+explainability/ig*/
