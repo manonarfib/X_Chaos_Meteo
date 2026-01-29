@@ -152,7 +152,7 @@ def plot_tp_attr_contour(
             Lon, Lat, contour_mask,
             levels=[0.5],
             colors="red",        # <- red contour
-            linewidths=2.2,
+            linewidths=1.2,
             transform=proj,
         )
 
@@ -164,6 +164,118 @@ def plot_tp_attr_contour(
     plt.close(fig)
     print(f"[FIG] Saved: {out_path}")
 
+def plot_tp_var_times_attr_contour(
+    tp_map: np.ndarray,
+    var_maps: list,           # list of 2D arrays [t=7, t=6, t=5]
+    var_name: str,
+    attr_map: np.ndarray,
+    europe_mask: np.ndarray,
+    out_path: str,
+    title: str,
+    tp_title: str,
+    attr_title: str,
+    var_titles: list,         # ["var t=7", "var t=6", "var t=5"]
+    contour_q: float = 0.95,
+    region=(-12.5, 42.5, 35, 72),
+    var_cmap: str = "cividis",
+):
+    """
+    Layout:
+      Col 1: TP(t=7)
+      Col 2: Variable at t=7,6,5 stacked vertically
+      Col 3: Attribution (for variable)
+      Col 4: TP(t=7) + contour(top-5% attribution)
+    """
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+    # Masks (NaN outside Europe)
+    tp_m = _apply_mask(tp_map, europe_mask)
+    var_ms = [_apply_mask(v, europe_mask) for v in var_maps]
+    at_m = _apply_mask(attr_map, europe_mask)
+
+    blues = _cmap_with_white_bad("Blues")
+    reds = _cmap_with_white_bad("Reds")
+    varcmap = _cmap_with_white_bad(var_cmap)
+
+    lon_min, lon_max, lat_min, lat_max = region
+    extent = [lon_min, lon_max, lat_min, lat_max]
+    proj = ccrs.PlateCarree()
+
+    # GridSpec: 3 rows, 4 columns
+    # Col 0: tp spans 3 rows
+    # Col 1: var t=7 / t=6 / t=5 (3 rows)
+    # Col 2: attribution spans 3 rows
+    # Col 3: tp+contour spans 3 rows
+    fig = plt.figure(figsize=(20, 9))
+    gs = fig.add_gridspec(nrows=3, ncols=4, width_ratios=[1.0, 1.0, 1.0, 1.0], wspace=0.25, hspace=0.15)
+
+    ax_tp   = fig.add_subplot(gs[:, 0], projection=proj)
+    ax_v7   = fig.add_subplot(gs[0, 1], projection=proj)
+    ax_v6   = fig.add_subplot(gs[1, 1], projection=proj)
+    ax_v5   = fig.add_subplot(gs[2, 1], projection=proj)
+    ax_attr = fig.add_subplot(gs[:, 2], projection=proj)
+    ax_tp_c = fig.add_subplot(gs[:, 3], projection=proj)
+
+    axes = [ax_tp, ax_v7, ax_v6, ax_v5, ax_attr, ax_tp_c]
+
+    # Map features
+    for ax in axes:
+        ax.set_extent(extent, crs=proj)
+        ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=0.8)
+        ax.add_feature(cfeature.BORDERS.with_scale("50m"), linewidth=0.6)
+        gl = ax.gridlines(draw_labels=False, linestyle="--", linewidth=0.35)
+        gl.right_labels = False
+        gl.top_labels = False
+
+    # --- Col 1: TP ---
+    im_tp = ax_tp.imshow(tp_m, cmap=blues, origin="upper", extent=extent, transform=proj)
+    ax_tp.set_title(tp_title)
+    plt.colorbar(im_tp, ax=ax_tp, fraction=0.046, pad=0.02)
+
+    # --- Col 2: Variable times ---
+    ims = []
+    for ax, vm, vt in zip([ax_v7, ax_v6, ax_v5], var_ms, var_titles):
+        imv = ax.imshow(vm, cmap=varcmap, origin="upper", extent=extent, transform=proj)
+        ax.set_title(vt)
+        ims.append(imv)
+
+    # One shared colorbar for the 3 var maps (using the first one)
+    plt.colorbar(ims[0], ax=[ax_v7, ax_v6, ax_v5], fraction=0.046, pad=0.02)
+
+    # --- Col 3: Attribution ---
+    im_at = ax_attr.imshow(at_m, cmap=reds, origin="upper", extent=extent, transform=proj)
+    ax_attr.set_title(attr_title)
+    plt.colorbar(im_at, ax=ax_attr, fraction=0.046, pad=0.02)
+
+    # --- Col 4: TP + contour ---
+    ax_tp_c.imshow(tp_m, cmap=blues, origin="upper", extent=extent, transform=proj)
+
+    flat = at_m[np.isfinite(at_m)]
+    if flat.size > 0:
+        thr = np.quantile(flat, contour_q)
+        contour_mask = np.zeros_like(at_m, dtype=np.float32)
+        contour_mask[np.isfinite(at_m) & (at_m >= thr)] = 1.0
+
+        # contour in lon/lat to avoid inversion
+        lons = np.linspace(lon_min, lon_max, contour_mask.shape[1])
+        lats = np.linspace(lat_max, lat_min, contour_mask.shape[0])
+        Lon, Lat = np.meshgrid(lons, lats)
+
+        ax_tp_c.contour(
+            Lon, Lat, contour_mask,
+            levels=[0.5],
+            colors="red",
+            linewidths=1.2,
+            transform=proj,
+        )
+
+    ax_tp_c.set_title(f"{tp_title} + top-{int((1-contour_q)*100)}% attr contour")
+
+    fig.suptitle(f"{title}\nVariable: {var_name}", y=0.98)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"[FIG] Saved: {out_path}")
 
 # ----------------------------
 # Attribution helpers
@@ -275,7 +387,7 @@ def main():
     dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
     ckpt_path = "checkpoints_mse/epoch3_full.pt"
 
-    sample_idx = 50
+    sample_idx = 982
     T = 8
     lead = 1
 
@@ -421,18 +533,30 @@ def main():
     # Per-variable top-k maps (sum over time for each variable)
     for rank, c_idx in enumerate(top_idx, start=1):
         var_name = input_vars[c_idx]
-        attr_c = attr_abs[0, :, c_idx].sum(dim=0).detach().cpu().numpy()  # (H,W) sum over T
 
-        plot_tp_attr_contour(
+        # Attribution de cette variable (sum over T)
+        attr_c = attr_abs[0, :, c_idx].sum(dim=0).detach().cpu().numpy()  # (H,W)
+
+        # Variable à différents temps: t=7,6,5
+        var_t7 = X[0, 7, c_idx].detach().cpu().numpy()
+        var_t6 = X[0, 6, c_idx].detach().cpu().numpy()
+        var_t5 = X[0, 5, c_idx].detach().cpu().numpy()
+
+        plot_tp_var_times_attr_contour(
             tp_map=tp_in,
+            var_maps=[var_t7, var_t6, var_t5],
+            var_name=var_name,
             attr_map=attr_c,
             europe_mask=europe_mask,
             out_path=os.path.join(out_dir, f"sample{sample_idx}_{method}_top{rank}_{var_name}_tp_t{t_view}.png"),
             title=f"Sample {sample_idx} | Top-{rank} variable: {var_name} | method={method}",
             tp_title=f"{tp_name} input (t={t_view})",
             attr_title=f"{method.upper()} abs attribution for {var_name} (sum over T)",
+            var_titles=[f"{var_name} input (t=7)", f"{var_name} input (t=6)", f"{var_name} input (t=5)"],
             contour_q=contour_q,
+            var_cmap="cividis",  # or "cividis"
         )
+
 
     print("[DONE] Outputs written to:", out_dir)
 

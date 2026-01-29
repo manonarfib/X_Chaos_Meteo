@@ -88,17 +88,17 @@ def main():
     input_vars = list(dataset.X.coords["channel"].values)
     C_in = len(input_vars)
 
-    # model = PrecipConvLSTM(
-    #     input_channels=C_in,
-    #     hidden_channels=[32, 64],
-    #     kernel_size=3,
-    # ).to(device)
+    model = PrecipConvLSTM(
+        input_channels=C_in,
+        hidden_channels=[32, 64],
+        kernel_size=3,
+    ).to(device)
 
-    model = WFUNet_with_train(8, 149, 221, 33, 1,
-                              8, 32, 0).to(device)
+    # model = WFUNet_with_train(8, 149, 221, 33, 1,
+    #                           8, 32, 0).to(device)
 
 
-    ckpt_path = "checkpoints/run_139411/checkpoint_last.pt"
+    ckpt_path = "checkpoints_mse/epoch3_full.pt"
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
@@ -110,7 +110,7 @@ def main():
     # X = X.to(device, non_blocking=True).float()
     # y = y.to(device, non_blocking=True).float()
     
-    sample_idx = 50
+    sample_idx = 250
     X, y, *_ = dataset[sample_idx]
 
     X = X.unsqueeze(0).to(device).float()  # ajouter dimension batch
@@ -132,13 +132,13 @@ def main():
     save_maps(
         y_true,
         y_pred,
-        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch1_batch727_maps_w_mse.png",
+        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch3_full_maps_mse.png",
         title_prefix=f"Test sample {sample_idx} - "
     )
     save_boxplot(
         y_true,
         y_pred,
-        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch1_batch727_boxplot_w_mse.png",
+        out_path=f"demonstrator/demo_outputs/sample{sample_idx}_epoch3_full_boxplot_mse.png",
         title=f"Test sample {sample_idx} – distribution Truth vs Pred"
     )
 
