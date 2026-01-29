@@ -14,7 +14,7 @@ import numpy as np
 
 
 class ERA5Dataset(Dataset):        
-    def __init__(self, path, T=8, lead=1, last_n_years=None, mean="models/utils/era5_mean.npy", std="models/utils/era5_std.npy", without_precip=False, max_lead=0):
+    def __init__(self, path, T=8, lead=1, last_n_years=None, mean="models/utils/era5_mean.npy", std="models/utils/era5_std.npy", without_precip=False, max_lead=1):
         ds = xr.open_zarr(path, chunks=None)
         
         # invalid times : times with nan during the download (merci le DCE 😭)
@@ -70,7 +70,7 @@ class ERA5Dataset(Dataset):
             self.start_idx = 0
 
     def __len__(self):
-        if self.max_lead!=0:
+        if self.max_lead!=1:
             return self.nt - self.T - self.max_lead + 1
         else:
             return self.nt - self.T - self.lead + 1
@@ -80,7 +80,7 @@ class ERA5Dataset(Dataset):
         x = torch.from_numpy(
             self.X.isel(time=slice(i, i + self.T)).values
         )
-        if self.max_lead!=0:
+        if self.max_lead!=1:
             y = torch.from_numpy(
                     self.Y.isel(
                         time=slice(i + self.T, i + self.T + self.max_lead)
