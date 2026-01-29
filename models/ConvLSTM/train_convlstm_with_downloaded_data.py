@@ -46,18 +46,12 @@ class Config:
     kernel_size: int = 3
 
     # Logging / checkpoint
-<<<<<<< HEAD
-    checkpoint_dir: str = "checkpoints_mse"
-    train_csv: str = "checkpoints_mse/train_log.csv"
-    val_csv: str = "checkpoints_mse/validation_log.csv"
-=======
-    checkpoint_dir: str = "checkpoints_input_all_lead"
-    train_csv: str = "checkpoints_input_all_lead/train_log.csv"
-    val_csv: str = "checkpoints_input_all_lead/validation_log.csv"
+    checkpoint_dir: str = "checkpoints_input_wout_precip"
+    train_csv: str = "checkpoints_input_wout_precip/train_log.csv"
+    val_csv: str = "checkpoints_input_wout_precip/validation_log.csv"
     
-    without_precip: bool = False 
-    max_lead: int = 8 # put to 0 if you want to only predict at one lead times
->>>>>>> 6da88ad (add feature permutation and training without precip or predict several lead times)
+    without_precip: bool = True # put to False for og config 
+    max_lead: int = 1 # put to 1 if you want to only predict at one lead times, 8 to predict up to 48h
 
     # Misc
     seed: int = 42
@@ -167,7 +161,7 @@ def create_dataloaders(cfg: Config):
 
 # Model / Optim
 
-def build_model(cfg: Config, input_channels: int, device: torch.device, output_size=0):
+def build_model(cfg: Config, input_channels: int, device: torch.device, output_size=1):
     print("\n[STEP] Initialisation of PrecipConvLSTM...")
     t0 = time.time()
 
