@@ -16,8 +16,8 @@ from models.unet.model_without_collapse import WFUNet_with_train
 # USER CONFIG
 # ============================================================
 MODEL_TYPE = "convlstm"  # "convlstm" or "unet"
-LOSS_NAME = "mse"        # e.g. "mse", "weighted_mse", "dice_weighted"
-CKPT_PATH = "checkpoints_mse/epoch3_full.pt"  # or ".../best_checkpoint_epoch1_batch528.pt"
+LOSS_NAME = "w_mse"        # e.g. "mse", "weighted_mse", "dice_weighted"
+CKPT_PATH = "checkpoints_w_mse/epoch1_full.pt"  # or ".../best_checkpoint_epoch1_batch528.pt"
 LEAD = 1  # lead in 6h steps -> prediction at t_lead = LEAD*6 hours
 SAMPLE_IDX = 50
 DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
@@ -70,7 +70,7 @@ def save_boxplot(y_true, y_pred, out_path, title=""):
 
     ax.boxplot(
         [yt, yp],
-        labels=["Truth", "Pred"],
+        tick_labels=["Truth", "Pred"],
         showfliers=True,
         patch_artist=True
     )
