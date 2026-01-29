@@ -46,6 +46,7 @@ thresholds = [0.1, 1.0, 5.0, 10.0]
 tp_tot = {th: 0 for th in thresholds}
 fp_tot = {th: 0 for th in thresholds}
 fn_tot = {th: 0 for th in thresholds}
+tn_tot = {th: 0 for th in thresholds}
 print(len(test_loader))
 with torch.no_grad():
     for X_batch, y_batch, i in test_loader:
@@ -54,19 +55,21 @@ with torch.no_grad():
         y_batch = y_batch.to(device).float()
         
         y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+        y_hat = torch.clamp(y_hat, min=0.0)
         
         # MSE & MAE
         mse_sum += nn.MSELoss(reduction='sum')(y_hat, y_batch).item()
         mae_sum += torch.sum(torch.abs(y_hat - y_batch)).item()
         num_pixels += y_batch.numel()
         
-        # CSI accum
+        # accum
         for th in thresholds:
             pred_bin = y_hat >= th
             true_bin = y_batch >= th
             tp_tot[th] += torch.logical_and(pred_bin, true_bin).sum().item()
             fp_tot[th] += torch.logical_and(pred_bin, ~true_bin).sum().item()
             fn_tot[th] += torch.logical_and(~pred_bin, true_bin).sum().item()
+            tn_tot[th] += torch.logical_and(~pred_bin, ~true_bin).sum().item()
 
 # Average metrics
 mse = mse_sum / num_pixels
@@ -78,19 +81,47 @@ eps = 1e-8
 for th in thresholds:
     csi_global[th] = tp_tot[th] / (tp_tot[th] + fp_tot[th] + fn_tot[th] + eps)
 
-print(f"Test set metrics - MSE: {mse:.6f} | MAE: {mae:.6f}")
-for th, csi in csi_global.items():
-    print(f"CSI @ {th} mm: {csi:.6f}")
-
-# Heidke Skill Score (HSS) (better when close to 1)
-
+# Global Heidke Skill Score (HSS) (better when close to 1)
+hss_global = {}
+eps = 1e-8
+for th in thresholds:
+    a = tp_tot[th]
+    b = fn_tot[th]
+    c = fp_tot[th]
+    d = tn_tot[th]
+    hss_global[th] = 2*(a*d-b*c) / ((a+c)*(c+d)+(a+b)*(b+d) + eps)
 
 # Probability of Detection (POD) (better when close to 1)
+pod_global = {}
+eps = 1e-8
+for th in thresholds:
+    a = tp_tot[th]
+    b = fn_tot[th]
+    c = fp_tot[th]
+    d = tn_tot[th]
+    pod_global[th] = a/ (a+b + eps)
 
 
 # False Alarm Ratio (better when close to 0)
+far_global = {}
+eps = 1e-8
+for th in thresholds:
+    a = tp_tot[th]
+    b = fn_tot[th]
+    c = fp_tot[th]
+    d = tn_tot[th]
+    far_global[th] = b / (a+b + eps)
 
 
+print(f"Test set metrics - MSE: {mse:.6f} | MAE: {mae:.6f}")
+for th, csi in csi_global.items():
+    print(f"CSI @ {th} mm: {csi:.6f}")
+for th, hss in hss_global.items():
+    print(f"HSS @ {th} mm: {hss:.6f}")
+for th, pod in pod_global.items():
+    print(f"POD @ {th} mm: {pod:.6f}")
+for th, far in far_global.items():
+    print(f"FAR @ {th} mm: {far:.6f}")
 
 # Résultats du ConvLSTM de base (MSE, tp_6h in, prévisions à 6h) :
 # Test set metrics - MSE: 0.756467 | MAE: 0.336837

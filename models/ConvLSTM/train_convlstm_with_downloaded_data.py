@@ -15,7 +15,7 @@ from tqdm import tqdm
 from dataclasses import asdict
 import pprint
 
-from models.utils.losses import WeightedMSELoss, WeightedDiceRegressionLoss
+from models.utils.losses import WeightedMSELoss, WeightedDiceRegressionLoss, AdvancedTorrentialLoss
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
 
@@ -38,7 +38,7 @@ class Config:
     # Training
     n_epochs: int = 3
     lr: float = 1e-3
-    # loss : "mse", "w_mse", "w_dice", "w_mse_and_w_dice", "mse_and_w_dice"
+    # loss : "mse", "w_mse", "w_dice", "w_mse_and_w_dice", "mse_and_w_dice", "advanced_torrential"
     loss_type: str = "mse"
 
     # Model
@@ -73,7 +73,7 @@ def get_device() -> torch.device:
 
 # Loss
 
-def compute_loss(output, target, loss_type="w_mse_and_w_dice"):
+def compute_loss(output, target, loss_type="w_mse_and_w_dice", torrential_loss=None):
     if loss_type in ["w_mse", "w_dice", "w_mse_and_w_dice", "mse_and_w_dice"]:
         weight = torch.where(
             target > 2,
@@ -98,6 +98,11 @@ def compute_loss(output, target, loss_type="w_mse_and_w_dice"):
 
     if loss_type == "w_mse":
         return WeightedMSELoss()(output, target, weight)
+    
+    if loss_type == "advanced_torrential":
+        if torrential_loss is None:
+            raise ValueError("AdvancedTorrentialLoss must be instantiated once and passed to compute_loss")
+        return torrential_loss(output, target)
 
     return WeightedMSELoss()(output, target)
 
@@ -228,7 +233,7 @@ def load_last_checkpoint(path, model, optimizer, device):
 
 # Validation
 
-def run_validation(model, val_loader, device, loss_type):
+def run_validation(model, val_loader, device, loss_type, advanced_torrential_loss):
     model.eval()
     total_loss = 0.0
 
@@ -238,7 +243,7 @@ def run_validation(model, val_loader, device, loss_type):
             y = y.to(device, non_blocking=True)
 
             y_hat = model(X).squeeze(1)
-            loss = compute_loss(y_hat, y, loss_type)
+            loss = compute_loss(y_hat, y, loss_type, torrential_loss=advanced_torrential_loss)
             total_loss += loss.item()
 
     return total_loss / len(val_loader)
@@ -260,6 +265,16 @@ def train(cfg: Config):
     train_loader, val_loader, train_dataset, input_vars = create_dataloaders(cfg)
     model = build_model(cfg, len(input_vars), device, output_size=cfg.max_lead)
     optimizer, scheduler = build_optimizer(model, cfg)
+    advanced_torrential_loss = None
+    if cfg.loss_type == "advanced_torrential":
+        advanced_torrential_loss = AdvancedTorrentialLoss(
+            threshold=2.0,  # À ajuster selon ta variable cible
+            call_per_epoch=len(train_loader),
+            tau_init=1.0,
+            tau_decay=0.005,
+            tau_min=0.05,
+            scale=0.05,
+        )
 
     init_csv(cfg.train_csv, ["epoch", "batch_idx", "loss"])
     init_csv(cfg.val_csv, ["epoch", "batch_idx", "eval_type", "loss"])
@@ -292,7 +307,7 @@ def train(cfg: Config):
             y = y.to(device, non_blocking=True)
 
             y_hat = model(X).squeeze(1)
-            loss = compute_loss(y_hat, y, cfg.loss_type)
+            loss = compute_loss(y_hat, y, cfg.loss_type, torrential_loss=advanced_torrential_loss)
 
             (loss / accumulation_steps).backward()
             epoch_loss += loss.item()
@@ -308,7 +323,7 @@ def train(cfg: Config):
                 acc_loss = 0.0
 
             if (batch_idx + 1) % evaluation_steps == 0 or (batch_idx + 1) == len(train_loader):
-                val_loss = run_validation(model, val_loader, device, cfg.loss_type)
+                val_loss = run_validation(model, val_loader, device, cfg.loss_type, advanced_torrential_loss)
 
                 if val_loss < previous_val_loss:
                     save_checkpoint(
