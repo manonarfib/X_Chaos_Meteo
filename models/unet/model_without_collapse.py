@@ -375,25 +375,34 @@ class WFUNet_with_train(WFUNet):
     #  COMPLETE TRAINING LOOP
     # ---------------------------------------------------------------------
     def fit(self, train_loader, val_loader, optimizer, scheduler,
-            epochs, loss_type, device, weight_update_interval, val_loss_calculation_interval, save_path="best_model.pt"):
+            epochs, loss_type, device, weight_update_interval, val_loss_calculation_interval, save_path, last_checkpoint_path=None):
 
         last_checkpoint = os.path.join(save_path, "checkpoint_last.pt")
         os.makedirs(os.path.dirname(last_checkpoint), exist_ok=True)
 
         start_epoch=1
 
-        if os.path.exists(last_checkpoint):
-            checkpoint = torch.load(last_checkpoint, map_location=device)
+        if last_checkpoint_path is not None:
+            checkpoint = torch.load(last_checkpoint_path, map_location=device)
             self.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            # scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
             start_epoch = checkpoint['epoch'] + 1
-            print(f"[CHECKPOINT] Chargé depuis {last_checkpoint}, reprise à l'époque {start_epoch}")
+            print(f"[CHECKPOINT] Chargé depuis {last_checkpoint_path}, reprise à l'époque {start_epoch}")
         else:
             print("[CHECKPOINT] Aucun checkpoint trouvé, entraînement depuis le début")
 
 
         csv_path_train = os.path.join(save_path,"train_log.csv")
         csv_path_val = os.path.join(save_path,"validation_log.csv")
+
+        def init_csv(path, header):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            if not os.path.exists(path):
+                with open(path, "w", newline="") as f:
+                    csv.writer(f).writerow(header)
+        init_csv(csv_path_train, ["epoch", "batch_idx", "loss"])
+        init_csv(csv_path_val, ["epoch", "batch_idx", "eval_type", "loss"])
 
         previous_val_b_loss = float("inf")
         val_batches_loss=0
@@ -435,6 +444,7 @@ class WFUNet_with_train(WFUNet):
                     print("OUTPUT", output.min(), output.max(), output.std())
                     print("TARGET", target.min(), target.max(), target.std())
                     print(output.shape, target.shape)
+                    print("LR", optimizer.param_groups[0]["lr"])
 
                     batch_time = time.time() - batch_start
                     print(
@@ -461,6 +471,7 @@ class WFUNet_with_train(WFUNet):
                             "epoch": epoch,
                             "model_state_dict": self.state_dict(),
                             "optimizer_state_dict": optimizer.state_dict(),
+                            "scheduler_state_dict": scheduler.state_dict(),
                         }, best_checkpoint)
 
                     with open(csv_path_val, "a", newline="") as f:
@@ -492,11 +503,13 @@ class WFUNet_with_train(WFUNet):
             torch.save({'epoch': epoch,
                 'model_state_dict': self.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
             }, epoch_checkpoint)
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": self.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
             }, last_checkpoint)
             print(f"[CHECKPOINT] Sauvegardé à {epoch_checkpoint}")
 

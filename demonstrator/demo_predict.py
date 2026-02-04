@@ -15,9 +15,9 @@ from models.unet.model_without_collapse import WFUNet_with_train
 # ============================================================
 # USER CONFIG
 # ============================================================
-MODEL_TYPE = "convlstm"  # "convlstm" or "unet"
-LOSS_NAME = "w_mse"        # e.g. "mse", "weighted_mse", "dice_weighted"
-CKPT_PATH = "checkpoints_w_mse/epoch3_full.pt"  # or ".../best_checkpoint_epoch1_batch528.pt"
+MODEL_TYPE = "unet"  # "convlstm" or "unet"
+LOSS_NAME = "mse"        # e.g. "mse", "weighted_mse", "dice_weighted"
+CKPT_PATH = "checkpoints/run_140292/best_checkpoint_epoch3_batch_idx5759.pt"  # or ".../best_checkpoint_epoch1_batch528.pt"
 LEAD = 1  # lead in 6h steps -> prediction at t_lead = LEAD*6 hours
 SAMPLE_IDX = 982
 DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"

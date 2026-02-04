@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-csv_path_train = "checkpoints_w_mse/train_log.csv"
-csv_path_val   = "checkpoints_w_mse/validation_log.csv"
+csv_path_train = "checkpoints/run_140292/train_log.csv"
+csv_path_val   = "checkpoints/run_140292/validation_log.csv"
 
 df_train = pd.read_csv(csv_path_train)
 df_val   = pd.read_csv(csv_path_val)
@@ -51,5 +51,5 @@ plt.grid(True, alpha=0.3)
 plt.legend()
 plt.tight_layout()
 
-plt.savefig("checkpoints_w_mse/loss_curve.png", dpi=150)
+plt.savefig('/'.join(csv_path_train.split('/')[:-1])+"/loss_curve.png", dpi=150)
 plt.show()
