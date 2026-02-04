@@ -194,7 +194,7 @@ def plot_tp_attr_contour(
     extent = [lon_min, lon_max, lat_min, lat_max]
     proj = ccrs.PlateCarree()
 
-    fig = plt.figure(figsize=(15, 4), constrained_layout=True)
+    fig = plt.figure(figsize=(20, 9))
     ax0 = fig.add_subplot(1, 3, 1, projection=proj)
     ax1 = fig.add_subplot(1, 3, 2, projection=proj)
     ax2 = fig.add_subplot(1, 3, 3, projection=proj)
@@ -244,8 +244,9 @@ def plot_tp_attr_contour(
 
     ax2.set_title(f"{tp_title} + top-{int((1-contour_q)*100)}% attr contour")
 
-    fig.suptitle(title)
-    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    fig.suptitle(title) 
+    plt.tight_layout() 
+    plt.savefig(out_path, dpi=200, bbox_inches="tight") 
     plt.close(fig)
     print(f"[FIG] Saved: {out_path}")
 
@@ -291,7 +292,7 @@ def plot_tp_var_times_attr_contour(
     # Col 1: var t=7 / t=6 / t=5 (3 rows)
     # Col 2: attribution spans 3 rows
     # Col 3: tp+contour spans 3 rows
-    fig = plt.figure(figsize=(20, 9), constrained_layout=True)
+    fig = plt.figure(figsize=(20, 9))
     gs = fig.add_gridspec(nrows=3, ncols=4, width_ratios=[1.0, 1.0, 1.0, 1.0], wspace=0.25, hspace=0.15)
 
     ax_tp   = fig.add_subplot(gs[:, 0], projection=proj)
@@ -356,9 +357,10 @@ def plot_tp_var_times_attr_contour(
 
     ax_tp_c.set_title(f"{tp_title} + top-{int((1-contour_q)*100)}% attr contour")
 
-    fig.suptitle(f"{title}\nVariable: {var_name}")
-    plt.savefig(out_path, dpi=200, bbox_inches="tight")
-    plt.close(fig)
+    fig.suptitle(f"{title}\nVariable: {var_name}", y=0.98) 
+    plt.tight_layout() 
+    plt.savefig(out_path, dpi=200, bbox_inches="tight") 
+    plt.close(fig) 
     print(f"[FIG] Saved: {out_path}")
 
 # ----------------------------

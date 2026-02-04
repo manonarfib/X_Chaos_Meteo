@@ -6,6 +6,8 @@ from torch.utils.data import DataLoader
 import matplotlib
 matplotlib.use("Agg")  # backend non interactif (clusters)
 import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
@@ -16,9 +18,9 @@ from models.unet.model_without_collapse import WFUNet_with_train
 # USER CONFIG
 # ============================================================
 MODEL_TYPE = "convlstm"  # "convlstm" or "unet"
-LOSS_NAME = "w_mse"        # e.g. "mse", "weighted_mse", "dice_weighted"
-CKPT_PATH = "checkpoints_w_mse/epoch3_full.pt"  # or ".../best_checkpoint_epoch1_batch528.pt"
-LEAD = 1  # lead in 6h steps -> prediction at t_lead = LEAD*6 hours
+LOSS_NAME = "mse"        # e.g. "mse", "weighted_mse", "dice_weighted"
+CKPT_PATH = "checkpoints_mse_48h/epoch3_full.pt"  # or ".../best_checkpoint_epoch1_batch528.pt"
+LEAD = 8  # lead in 6h steps -> prediction at t_lead = LEAD*6 hours
 SAMPLE_IDX = 982
 DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
 
@@ -27,33 +29,92 @@ BATCH_SIZE = 16
 CLIP_NEG_PRED = True  # clamp predictions to >=0
 # ============================================================
 
+def _cmap_with_white_bad(name: str):
+    cmap = plt.get_cmap(name).copy()
+    cmap.set_bad(color="white")
+    return cmap
 
-def save_maps(y_true, y_pred, out_path, title_prefix=""):
-    err = np.abs(y_pred - y_true)
+def _apply_mask(arr2d: np.ndarray, mask2d: np.ndarray) -> np.ndarray:
+    out = arr2d.astype(np.float32).copy()
+    out[~mask2d.astype(bool)] = np.nan
+    return out
 
-    vmin = float(np.nanmin([np.nanmin(y_true), np.nanmin(y_pred)]))
-    vmax = float(np.nanmax([np.nanmax(y_true), np.nanmax(y_pred)]))
+def save_maps_europe(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    out_path: str,
+    title_prefix: str = "",
+    region=(-12.5, 42.5, 35, 72),
+    error_mode: str = "abs",   # "abs" or "signed"
+):
+    """
+    3 panels with Cartopy background:
+      1) Truth (Blues)
+      2) Pred  (Blues)
+      3) Error (Reds for abs, bwr for signed)
+    White outside Europe (mask from finite values).
+    """
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+    # Mask: white outside Europe
+    # (If your dataset already has NaNs outside Europe, this works immediately)
+    europe_mask = np.isfinite(y_true) | np.isfinite(y_pred)
 
-    im0 = axes[0].imshow(y_true, vmin=vmin, vmax=vmax)
-    axes[0].set_title(f"{title_prefix}Truth tp_6h")
-    plt.colorbar(im0, ax=axes[0], fraction=0.046)
+    yt = _apply_mask(y_true, europe_mask)
+    yp = _apply_mask(y_pred, europe_mask)
 
-    im1 = axes[1].imshow(y_pred, vmin=vmin, vmax=vmax)
-    axes[1].set_title(f"{title_prefix}Pred tp_6h")
-    plt.colorbar(im1, ax=axes[1], fraction=0.046)
+    if error_mode == "abs":
+        err = np.abs(yp - yt)
+        err_cmap = _cmap_with_white_bad("Reds")
+        err_title = "|Error|"
+        err_vmin, err_vmax = None, None
+    elif error_mode == "signed":
+        err = (yp - yt)
+        err_cmap = _cmap_with_white_bad("bwr")
+        err_title = "Pred - Truth"
+        m = np.nanmax(np.abs(err))
+        err_vmin, err_vmax = -m, m
+    else:
+        raise ValueError("error_mode must be 'abs' or 'signed'")
 
-    im2 = axes[2].imshow(err)
-    axes[2].set_title(f"{title_prefix}|Error|")
-    plt.colorbar(im2, ax=axes[2], fraction=0.046)
+    # Shared scale for truth/pred
+    vmin = float(np.nanmin([np.nanmin(yt), np.nanmin(yp)]))
+    vmax = float(np.nanmax([np.nanmax(yt), np.nanmax(yp)]))
+
+    blues = _cmap_with_white_bad("Blues")
+
+    lon_min, lon_max, lat_min, lat_max = region
+    extent = [lon_min, lon_max, lat_min, lat_max]
+    proj = ccrs.PlateCarree()
+
+    # IMPORTANT: Cartopy + layout -> use constrained_layout (avoid tight_layout warnings)
+    fig = plt.figure(figsize=(16, 5), constrained_layout=True)
+    ax0 = fig.add_subplot(1, 3, 1, projection=proj)
+    ax1 = fig.add_subplot(1, 3, 2, projection=proj)
+    ax2 = fig.add_subplot(1, 3, 3, projection=proj)
+    axes = [ax0, ax1, ax2]
 
     for ax in axes:
-        ax.axis("off")
+        ax.set_extent(extent, crs=proj)
+        ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=0.8)
+        ax.add_feature(cfeature.BORDERS.with_scale("50m"), linewidth=0.6)
+        gl = ax.gridlines(draw_labels=True, linestyle="--", linewidth=0.4)
+        gl.right_labels = False
+        gl.top_labels = False
 
-    plt.tight_layout()
+    im0 = ax0.imshow(yt, cmap=blues, vmin=vmin, vmax=vmax, origin="upper", extent=extent, transform=proj)
+    ax0.set_title(f"{title_prefix}Truth tp_6h")
+    plt.colorbar(im0, ax=ax0, fraction=0.046, pad=0.02)
+
+    im1 = ax1.imshow(yp, cmap=blues, vmin=vmin, vmax=vmax, origin="upper", extent=extent, transform=proj)
+    ax1.set_title(f"{title_prefix}Pred tp_6h")
+    plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.02)
+
+    im2 = ax2.imshow(err, cmap=err_cmap, vmin=err_vmin, vmax=err_vmax, origin="upper", extent=extent, transform=proj)
+    ax2.set_title(f"{title_prefix}{err_title}")
+    plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.02)
+
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.savefig(out_path, dpi=200)
     plt.close(fig)
     print(f"[FIG] Saved maps: {out_path}")
 
@@ -154,12 +215,14 @@ def main():
     maps_path = f"{out_dir}/{ckpt_stem}_maps_{LOSS_NAME}_prediction_{t_lead}h.png"
     box_path = f"{out_dir}/{ckpt_stem}_boxplot_{LOSS_NAME}_prediction_{t_lead}h.png"
 
-    save_maps(
+    save_maps_europe(
         y_true,
         y_pred,
         out_path=maps_path,
-        title_prefix=f"Test sample {SAMPLE_IDX} - "
+        title_prefix=f"Test sample {SAMPLE_IDX} - ",
+        error_mode="abs",   # ou "signed"
     )
+
     save_boxplot(
         y_true,
         y_pred,
