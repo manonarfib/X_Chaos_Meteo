@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-csv_path_train = "checkpoints/run_140292/train_log.csv"
-csv_path_val   = "checkpoints/run_140292/validation_log.csv"
+csv_path_train = "checkpoints/run_141848/train_log.csv"
+csv_path_val   = "checkpoints/run_141848/validation_log.csv"
 
 df_train = pd.read_csv(csv_path_train)
 df_val   = pd.read_csv(csv_path_val)
