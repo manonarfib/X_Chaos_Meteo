@@ -3,7 +3,7 @@ mini_val_batches.pt
 __pycache__/
 logs/
 checkpoints*/
-demonstrator/demo_outputs/
+demonstrator/demo*/
 *.pt
 *.pth
 *.ckpt
