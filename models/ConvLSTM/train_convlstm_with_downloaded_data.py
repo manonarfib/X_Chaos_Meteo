@@ -207,18 +207,19 @@ def init_csv(path, header):
             csv.writer(f).writerow(header)
 
 
-def save_checkpoint(path, epoch, model, optimizer):
+def save_checkpoint(path, epoch, model, optimizer, scheduler):
     torch.save(
         {
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict()
         },
         path,
     )
 
 
-def load_last_checkpoint(path, model, optimizer, device):
+def load_last_checkpoint(path, model, optimizer, scheduler, device):
     if not os.path.exists(path):
         print("[CHECKPOINT] No checkpoint found, training starting at the beginning.")
         return 1
@@ -226,6 +227,7 @@ def load_last_checkpoint(path, model, optimizer, device):
     checkpoint = torch.load(path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
     start_epoch = checkpoint["epoch"] + 1
     print(f"[CHECKPOINT] Loaded from {path}, starting again at epoch {start_epoch}")
     return start_epoch
@@ -284,7 +286,7 @@ def train(cfg: Config):
     print(f"Accumulation steps : {accumulation_steps}")
 
     last_checkpoint = os.path.join(cfg.checkpoint_dir, "checkpoint_last.pt")
-    start_epoch = load_last_checkpoint(last_checkpoint, model, optimizer, device)
+    start_epoch = load_last_checkpoint(last_checkpoint, model, optimizer, scheduler, device)
 
     previous_val_loss = np.inf
 
@@ -331,6 +333,7 @@ def train(cfg: Config):
                         epoch,
                         model,
                         optimizer,
+                        scheduler
                     )
                     previous_val_loss = val_loss
 
@@ -345,8 +348,8 @@ def train(cfg: Config):
         avg_loss = epoch_loss / len(train_loader)
         print(f">>> Epoch {epoch} terminé - loss moyenne : {avg_loss:.4e}")
 
-        save_checkpoint(f"{cfg.checkpoint_dir}/epoch{epoch}_full.pt", epoch, model, optimizer)
-        save_checkpoint(last_checkpoint, epoch, model, optimizer)
+        save_checkpoint(f"{cfg.checkpoint_dir}/epoch{epoch}_full.pt", epoch, model, optimizer, scheduler)
+        save_checkpoint(last_checkpoint, epoch, model, optimizer, scheduler)
 
     print(f"[TRAIN] Training finished in {time.time() - t_train:.1f}s")
 

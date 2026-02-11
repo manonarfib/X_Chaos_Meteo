@@ -20,6 +20,8 @@ import torch
 import matplotlib
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import re
+import argparse
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -27,10 +29,55 @@ import matplotlib.pyplot as plt
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
 
-
 # ----------------------------
 # Plot helpers
 # ----------------------------
+def infer_loss_name_from_ckpt_path(ckpt_path: str) -> str | None:
+    """
+    Tries to infer loss_name from ckpt path, e.g.:
+      checkpoints_mse/epoch3_full.pt -> "mse"
+      checkpoints_mae/... -> "mae"
+    """
+    # common pattern: checkpoints_<loss>/...
+    m = re.search(r"checkpoints[_\-]([A-Za-z0-9]+)", ckpt_path)
+    if m:
+        return m.group(1).lower()
+
+    # alternative: folder name contains the loss
+    folder = os.path.basename(os.path.dirname(ckpt_path)).lower()
+    for cand in ["mse", "mae", "huber", "l1", "l2", "smoothl1"]:
+        if cand in folder:
+            return cand
+    return None
+
+
+def get_loss_name(ckpt: dict, ckpt_path: str, user_loss: str | None) -> str:
+    """
+    Priority:
+      1) explicit CLI/user argument
+      2) checkpoint metadata if present (ckpt["loss_name"])
+      3) infer from ckpt_path
+      4) fallback "unknownloss"
+    """
+    if user_loss:
+        return user_loss.lower()
+
+    if isinstance(ckpt, dict) and "loss_name" in ckpt and ckpt["loss_name"]:
+        return str(ckpt["loss_name"]).lower()
+
+    inferred = infer_loss_name_from_ckpt_path(ckpt_path)
+    if inferred:
+        return inferred
+
+    return "unknownloss"
+
+def lead_to_str(lead: int) -> str:
+    """
+    Your convention: lead=1 corresponds to 6h.
+    If later you use lead in 6h-steps, this generalizes nicely.
+    """
+    return f"{lead * 6}h"
+
 def _cmap_with_white_bad(name: str):
     cmap = plt.get_cmap(name).copy()
     cmap.set_bad(color="white")  # NaNs will render white
@@ -147,7 +194,7 @@ def plot_tp_attr_contour(
     extent = [lon_min, lon_max, lat_min, lat_max]
     proj = ccrs.PlateCarree()
 
-    fig = plt.figure(figsize=(15, 4))
+    fig = plt.figure(figsize=(20, 9))
     ax0 = fig.add_subplot(1, 3, 1, projection=proj)
     ax1 = fig.add_subplot(1, 3, 2, projection=proj)
     ax2 = fig.add_subplot(1, 3, 3, projection=proj)
@@ -197,9 +244,9 @@ def plot_tp_attr_contour(
 
     ax2.set_title(f"{tp_title} + top-{int((1-contour_q)*100)}% attr contour")
 
-    fig.suptitle(title)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    fig.suptitle(title) 
+    plt.tight_layout() 
+    plt.savefig(out_path, dpi=200, bbox_inches="tight") 
     plt.close(fig)
     print(f"[FIG] Saved: {out_path}")
 
@@ -310,10 +357,10 @@ def plot_tp_var_times_attr_contour(
 
     ax_tp_c.set_title(f"{tp_title} + top-{int((1-contour_q)*100)}% attr contour")
 
-    fig.suptitle(f"{title}\nVariable: {var_name}", y=0.98)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=200, bbox_inches="tight")
-    plt.close(fig)
+    fig.suptitle(f"{title}\nVariable: {var_name}", y=0.98) 
+    plt.tight_layout() 
+    plt.savefig(out_path, dpi=200, bbox_inches="tight") 
+    plt.close(fig) 
     print(f"[FIG] Saved: {out_path}")
 
 # ----------------------------
@@ -512,26 +559,40 @@ def compute_importance_over_random_samples(
 # Main
 # ----------------------------
 def main():
-    # ---- config ----
-    dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
-    ckpt_path = "checkpoints_mse/epoch3_full.pt"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset_path", type=str, default="/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr")
+    parser.add_argument("--ckpt_path", type=str, default="checkpoints_mse/epoch3_full.pt")
 
-    sample_idx = 982
-    T = 8
-    lead = 1
+    parser.add_argument("--sample_idx", type=int, default=982)
+    parser.add_argument("--T", type=int, default=8)
+    parser.add_argument("--lead", type=int, default=None, help="lead_time (model output horizon). If None, use the value in code or try to infer from ckpt.")
+    parser.add_argument("--loss_name", type=str, default=None, help="Override loss name used for output folder naming.")
+    parser.add_argument("--no_agg", action="store_true", help="Skip aggregate importance computation.")
+    parser.add_argument("--n_samples", type=int, default=100, help="Number of random samples for aggregate importance.")
+    parser.add_argument("--seed", type=int, default=0)
+
+    args = parser.parse_args()
+
+    # ---- config ----
+    dataset_path = args.dataset_path
+    ckpt_path = args.ckpt_path
+
+    sample_idx = args.sample_idx
+    T = args.T
+
+    # lead_time: user override > (optional ckpt metadata) > fallback
+    lead = args.lead if args.lead is not None else 1  # <- garde ton fallback à 1 si tu veux
 
     # Visualisation choices
-    t_view = 7  # show tp at time index 7 (last input step)
-    contour_q = 0.95  # top-5% contour
+    t_view = 7
+    contour_q = 0.95
     top_k_vars = 5
 
     # Attribution choices
-    method = "ig"  # "ig" or "gradxinput"
-    steps = 30     # used only if method="ig"
-    baseline_mode = "zeros"  # "zeros" or "mean_over_space_time"
-
-    # target: explain high predicted precip regions
-    region_quantile = 0.90  # region = top 10% predicted pixels
+    method = "ig"
+    steps = 30
+    baseline_mode = "zeros"
+    region_quantile = 0.90
 
     # ---- device ----
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -555,72 +616,79 @@ def main():
     model.eval()
     print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {ckpt_path}")
 
-    # ---- output dir ----
-    out_dir = "explainability/ig_outputs_mse_viz"
+    # ---- loss name (for folder naming) ----
+    loss_name = get_loss_name(ckpt=ckpt, ckpt_path=ckpt_path, user_loss=args.loss_name)
+
+    # ---- output dir: ig_outputs_{loss_name}_{lead}_{n_samples} ----
+    lead_str = lead_to_str(lead)
+    out_dir = f"explainability/ig_outputs_{loss_name}_{lead_str}_{args.n_samples}"
+
     os.makedirs(out_dir, exist_ok=True)
+    print("[OUT_DIR]", out_dir)
 
     # ---- aggregate importance over many random test samples ----
-    n_agg = 100
-    agg_seed = 0
+    if not args.no_agg:
+        n_agg = args.n_samples
+        agg_seed = args.seed
 
-    agg_dir = os.path.join(out_dir, f"aggregate_{method}_{n_agg}")
-    os.makedirs(agg_dir, exist_ok=True)
+        agg_dir = os.path.join(out_dir, f"aggregate_{method}_{n_agg}")
+        os.makedirs(agg_dir, exist_ok=True)
 
-    v_mean, v_std, t_mean, t_std, chosen_idx = compute_importance_over_random_samples(
-        model=model,
-        dataset=dataset,
-        input_vars=input_vars,
-        device=device,
-        n_samples=n_agg,
-        seed=agg_seed,
-        method=method,
-        steps=steps,
-        baseline_mode=baseline_mode,
-        region_quantile=region_quantile,
-    )
+        v_mean, v_std, t_mean, t_std, chosen_idx = compute_importance_over_random_samples(
+            model=model,
+            dataset=dataset,
+            input_vars=input_vars,
+            device=device,
+            n_samples=n_agg,
+            seed=agg_seed,
+            method=method,
+            steps=steps,
+            baseline_mode=baseline_mode,
+            region_quantile=region_quantile,
+        )
 
-    # Save chosen indices for reproducibility
-    np.save(os.path.join(agg_dir, "chosen_indices.npy"), chosen_idx)
+        np.save(os.path.join(agg_dir, "chosen_indices.npy"), chosen_idx)
 
-    # Plots
-    save_barplot(
-        v_mean,
-        labels=input_vars,
-        out_path=os.path.join(agg_dir, "var_importance_mean.png"),
-        title=f"{method.upper()} variable importance (MEAN over {len(chosen_idx)} samples)",
-        top_k=20,
-    )
-    save_barplot_mean_std(
-        v_mean, v_std,
-        labels=input_vars,
-        out_path=os.path.join(agg_dir, "var_importance_mean_std.png"),
-        title=f"{method.upper()} variable importance (mean ± std over {len(chosen_idx)} samples)",
-        top_k=20,
-    )
+        save_barplot(
+            v_mean,
+            labels=input_vars,
+            out_path=os.path.join(agg_dir, "var_importance_mean.png"),
+            title=f"{method.upper()} variable importance (MEAN over {len(chosen_idx)} samples)",
+            top_k=20,
+        )
+        save_barplot_mean_std(
+            v_mean, v_std,
+            labels=input_vars,
+            out_path=os.path.join(agg_dir, "var_importance_mean_std.png"),
+            title=f"{method.upper()} variable importance (mean ± std over {len(chosen_idx)} samples)",
+            top_k=20,
+        )
+        save_lineplot(
+            t_mean,
+            out_path=os.path.join(agg_dir, "time_importance_mean.png"),
+            title=f"{method.upper()} time importance (MEAN over {len(chosen_idx)} samples)",
+            xlabel="t index in input window (0..T-1, past→present)",
+            ylabel="Importance (mean sum abs attribution)",
+        )
+        save_lineplot_mean_std(
+            t_mean, t_std,
+            out_path=os.path.join(agg_dir, "time_importance_mean_std.png"),
+            title=f"{method.upper()} time importance (mean ± std over {len(chosen_idx)} samples)",
+            xlabel="t index in input window (0..T-1, past→present)",
+            ylabel="Importance (sum abs attribution)",
+        )
 
-    save_lineplot(
-        t_mean,
-        out_path=os.path.join(agg_dir, "time_importance_mean.png"),
-        title=f"{method.upper()} time importance (MEAN over {len(chosen_idx)} samples)",
-        xlabel="t index in input window (0..T-1, past→present)",
-        ylabel="Importance (mean sum abs attribution)",
-    )
-    save_lineplot_mean_std(
-        t_mean, t_std,
-        out_path=os.path.join(agg_dir, "time_importance_mean_std.png"),
-        title=f"{method.upper()} time importance (mean ± std over {len(chosen_idx)} samples)",
-        xlabel="t index in input window (0..T-1, past→present)",
-        ylabel="Importance (sum abs attribution)",
-    )
+        print("[AGG DONE] Aggregate plots written to:", agg_dir)
+    else:
+        print("[AGG SKIPPED] --no_agg was set")
 
-    print("[AGG DONE] Aggregate plots written to:", agg_dir)
 
     # ---- sample ----
     X, y, *_ = dataset[sample_idx]
-    X = X.unsqueeze(0).to(device).float()  # (1,T,C,H,W)
+    X = X.unsqueeze(0).to(device).float()
     y = y.unsqueeze(0).to(device).float()
     if y.dim() == 3:
-        y = y.unsqueeze(1)  # (1,1,H,W)
+        y = y.unsqueeze(1)
 
     # ---- predict ----
     with torch.no_grad():
@@ -631,12 +699,12 @@ def main():
     B, _, H, W = y_hat.shape
     print("y_hat shape:", tuple(y_hat.shape))
 
-    # ---- define region to explain (top-10% predicted precip) ----
+    # ---- define region ----
     with torch.no_grad():
-        pred_map = y_hat[0, 0]  # (H,W)
+        pred_map = y_hat[0, 0]
         thresh = torch.quantile(pred_map.flatten(), region_quantile)
         region = (pred_map >= thresh).float()
-        region_mask = region.unsqueeze(0).unsqueeze(0)  # (1,1,H,W)
+        region_mask = region.unsqueeze(0).unsqueeze(0)
 
     # ---- attribution ----
     if method == "ig":
@@ -653,21 +721,16 @@ def main():
         print(f"Computed IG in {time.time()-t0:.2f}s (steps={steps}, baseline={baseline_mode})")
     elif method == "gradxinput":
         t0 = time.time()
-        attr = grad_x_input(
-            model=model,
-            x=X,
-            target="region_sum",
-            region_mask=region_mask,
-        )
+        attr = grad_x_input(model=model, x=X, target="region_sum", region_mask=region_mask)
         print(f"Computed grad×input in {time.time()-t0:.2f}s")
     else:
         raise ValueError("method must be 'ig' or 'gradxinput'")
 
-    attr_abs = attr.abs()  # (1,T,C,H,W)
+    attr_abs = attr.abs()
 
-    # ---- summaries: variable/time importance ----
-    var_importance = attr_abs.sum(dim=(1, 3, 4))[0].detach().cpu().numpy()  # sum over T,H,W -> (C,)
-    time_importance = attr_abs.sum(dim=(2, 3, 4))[0].detach().cpu().numpy()  # sum over C,H,W -> (T,)
+    # ---- summaries ----
+    var_importance = attr_abs.sum(dim=(1, 3, 4))[0].detach().cpu().numpy()
+    time_importance = attr_abs.sum(dim=(2, 3, 4))[0].detach().cpu().numpy()
 
     # ---- plots: importance ----
     save_barplot(
