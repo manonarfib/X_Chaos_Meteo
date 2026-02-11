@@ -32,8 +32,9 @@ model = PrecipConvLSTM(
     kernel_size=3,
     output_size=max_lead
 ).to(device)
-ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
+# ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
 # ckpt_path = "epoch3_full.pt"
+ckpt_path = "epoch1_full_mse_before_norm.pt"
 ckpt = torch.load(ckpt_path, map_location=device)
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
@@ -54,12 +55,20 @@ print(len(test_loader))
 with torch.no_grad():
     for X_batch, y_batch, i in test_loader:
         print(f"days {i[0]/4} to {(i[-1]+1)/4} computed")
-        X_batch = X_batch.to(device).float()
-        y_batch = y_batch[:, -1, :, :].to(device).float()
-        
-        y_hat = model(X_batch).squeeze(1)  # (B,H,W)
-        y_hat = y_hat[:, -1, :, :]
-        y_hat = torch.clamp(y_hat, min=0.0)
+        if (i[-1]+1)/4==10:
+            break
+        if max_lead==1:
+            X_batch = X_batch.to(device).float()
+            y_batch = y_batch.to(device).float()
+            
+            y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+            y_hat = torch.clamp(y_hat, min=0.0)
+        else:
+            X_batch = X_batch.to(device).float()
+            y_batch = y_batch[:, -1, :, :].to(device).float()
+            y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+            y_hat = y_hat[:, -1, :, :]
+            y_hat = torch.clamp(y_hat, min=0.0)
         
         # MSE & MAE
         mse_sum += nn.MSELoss(reduction='sum')(y_hat, y_batch).item()
@@ -81,39 +90,18 @@ mae = mae_sum / num_pixels
 
 # Global CSI
 csi_global = {}
-eps = 1e-8
-for th in thresholds:
-    csi_global[th] = tp_tot[th] / (tp_tot[th] + fp_tot[th] + fn_tot[th] + eps)
-
-# Global Heidke Skill Score (HSS) (better when close to 1)
 hss_global = {}
-eps = 1e-8
-for th in thresholds:
-    a = tp_tot[th]
-    b = fn_tot[th]
-    c = fp_tot[th]
-    d = tn_tot[th]
-    hss_global[th] = 2*(a*d-b*c) / ((a+c)*(c+d)+(a+b)*(b+d) + eps)
-
-# Probability of Detection (POD) (better when close to 1)
 pod_global = {}
-eps = 1e-8
-for th in thresholds:
-    a = tp_tot[th]
-    b = fn_tot[th]
-    c = fp_tot[th]
-    d = tn_tot[th]
-    pod_global[th] = a/ (a+b + eps)
-
-
-# False Alarm Ratio (better when close to 0)
 far_global = {}
 eps = 1e-8
 for th in thresholds:
     a = tp_tot[th]
-    b = fn_tot[th]
-    c = fp_tot[th]
+    b = fp_tot[th]
+    c = fn_tot[th]
     d = tn_tot[th]
+    csi_global[th] = a / (a + b + c + eps)
+    hss_global[th] = 2*(a*d-b*c) / ((a+c)*(c+d)+(a+b)*(b+d) + eps)
+    pod_global[th] = a/ (a+c + eps)
     far_global[th] = b / (a+b + eps)
 
 
