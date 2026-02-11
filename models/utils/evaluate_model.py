@@ -18,8 +18,10 @@ print("Device:", device)
 dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
 T, lead = 8, 1
 batch_size = 8
+without_precip=False
+max_lead = 1
 
-dataset = ERA5Dataset(dataset_path, T=T, lead=lead)    
+dataset = ERA5Dataset(dataset_path, T=T, lead=lead, without_precip=without_precip, max_lead=max_lead)    
 test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 input_vars = list(dataset.X.coords["channel"].values)
 C_in = len(input_vars)
@@ -28,9 +30,10 @@ model = PrecipConvLSTM(
     input_channels=C_in,
     hidden_channels=[32, 64],
     kernel_size=3,
+    output_size=max_lead
 ).to(device)
-
-ckpt_path = "epoch3_full.pt"
+ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
+# ckpt_path = "epoch3_full.pt"
 ckpt = torch.load(ckpt_path, map_location=device)
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
@@ -50,11 +53,12 @@ tn_tot = {th: 0 for th in thresholds}
 print(len(test_loader))
 with torch.no_grad():
     for X_batch, y_batch, i in test_loader:
-        print(f"days {i[0]} to {(i[-1]+1)/4} computed")
+        print(f"days {i[0]/4} to {(i[-1]+1)/4} computed")
         X_batch = X_batch.to(device).float()
-        y_batch = y_batch.to(device).float()
+        y_batch = y_batch[:, -1, :, :].to(device).float()
         
         y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+        y_hat = y_hat[:, -1, :, :]
         y_hat = torch.clamp(y_hat, min=0.0)
         
         # MSE & MAE
@@ -113,7 +117,7 @@ for th in thresholds:
     far_global[th] = b / (a+b + eps)
 
 
-print(f"Test set metrics - MSE: {mse:.6f} | MAE: {mae:.6f}")
+print(f"Validation set metrics - MSE: {mse:.6f} | MAE: {mae:.6f}")
 for th, csi in csi_global.items():
     print(f"CSI @ {th} mm: {csi:.6f}")
 for th, hss in hss_global.items():
@@ -122,12 +126,4 @@ for th, pod in pod_global.items():
     print(f"POD @ {th} mm: {pod:.6f}")
 for th, far in far_global.items():
     print(f"FAR @ {th} mm: {far:.6f}")
-
-# Résultats du ConvLSTM de base (MSE, tp_6h in, prévisions à 6h) :
-# Test set metrics - MSE: 0.756467 | MAE: 0.336837
-# CSI @ 0.1 mm: 0.681179
-# CSI @ 1.0 mm: 0.587248
-# CSI @ 5.0 mm: 0.398580
-# CSI @ 10.0 mm: 0.264549
-
 
