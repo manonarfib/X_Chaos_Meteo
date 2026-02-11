@@ -34,7 +34,7 @@ model = PrecipConvLSTM(
 ).to(device)
 # ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
 # ckpt_path = "epoch3_full.pt"
-ckpt_path = "epoch1_full_mse_before_norm.pt"
+ckpt_path = "checkpoints_advanced_torrential/epoch3_full.pt"
 ckpt = torch.load(ckpt_path, map_location=device)
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
@@ -55,8 +55,6 @@ print(len(test_loader))
 with torch.no_grad():
     for X_batch, y_batch, i in test_loader:
         print(f"days {i[0]/4} to {(i[-1]+1)/4} computed")
-        if (i[-1]+1)/4==10:
-            break
         if max_lead==1:
             X_batch = X_batch.to(device).float()
             y_batch = y_batch.to(device).float()
