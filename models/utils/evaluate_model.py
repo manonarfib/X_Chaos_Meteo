@@ -15,7 +15,7 @@ import torch
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device:", device)
 
-dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
+dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
 T, lead = 8, 1
 batch_size = 8
 without_precip=False
@@ -32,8 +32,8 @@ model = PrecipConvLSTM(
     kernel_size=3,
     output_size=max_lead
 ).to(device)
-ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
-# ckpt_path = "epoch3_full.pt"
+# ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
+ckpt_path = "epoch3_full.pt"
 ckpt = torch.load(ckpt_path, map_location=device)
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
@@ -54,12 +54,19 @@ print(len(test_loader))
 with torch.no_grad():
     for X_batch, y_batch, i in test_loader:
         print(f"days {i[0]/4} to {(i[-1]+1)/4} computed")
-        X_batch = X_batch.to(device).float()
-        y_batch = y_batch[:, -1, :, :].to(device).float()
         
-        y_hat = model(X_batch).squeeze(1)  # (B,H,W)
-        y_hat = y_hat[:, -1, :, :]
-        y_hat = torch.clamp(y_hat, min=0.0)
+        if max_lead==1:
+            X_batch = X_batch.to(device).float()
+            y_batch = y_batch.to(device).float()
+            
+            y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+            y_hat = torch.clamp(y_hat, min=0.0)
+        else:
+            X_batch = X_batch.to(device).float()
+            y_batch = y_batch[:, -1, :, :].to(device).float()
+            y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+            y_hat = y_hat[:, -1, :, :]
+            y_hat = torch.clamp(y_hat, min=0.0)
         
         # MSE & MAE
         mse_sum += nn.MSELoss(reduction='sum')(y_hat, y_batch).item()
