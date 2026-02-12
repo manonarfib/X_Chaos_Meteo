@@ -24,72 +24,65 @@ We implement permutation-based methods and integrated gradients, combined with v
 
 To get a local copy of this project up and running, follow these steps.
 
-### 🚀 Prerequisites
-
-- **Node.js** (v16.x or higher) and **npm** or **yarn**.
-- **Npm** If you prefer using npm for package management and running scripts.
-- **PostgreSQL** (or another supported SQL database).
-
-## 🛠️ Installation
-
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/sumonta056/readme-template.git
-   cd readme-template
+   git clone git@github.com:manonarfib/X_Chaos_Meteo.git
+   cd X_Chaos_Meteo
    ```
 
 2. **Install dependencies:**
 
-   Using Npm:
+  We recommend using a virtual environment to manage dependencies.
 
    ```bash
-   npm install
+   pip install -r requirements.txt
    ```
 
-3. **Set up environment variables:**
-
-   Create a `.env` file in the root directory and add the following variables:
-
-   ```env
-   NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-   #database
-   DATABASE_URL=your_database_url
-   DATABASE_SECRET=your_database_secret
-   DRIZZLE_DATABASE_URL=your_database_url_for_drizzle
-
-   #auth
-   AUTH_SECRET=any_random_secret
-   ```
-
-4. **Run database migrations:**
-
-   Ensure your database is running and then run:
-
-   ```bash
-   npm run drizzle-kit migrate
-   ```
-
-5. **Start the development server:**
-
-   ```bash
-   npm run dev
-   ```
 
 ## 📖 Usage
 
-### Repository structure description
+### 🗂️ Repository structure description
 
-### Visualizing some variables
+### 🗂️ Repository Structure Description
 
-### Downloading the dataset
+This repository is organized as follows:
 
-### Training a weather forecasting model
+```text
+X_Chaos_Meteo/
+├── demonstrator/
+│   ├── 
+│   ├── 
+│   └── 
+│
+├── download_dataset_from_gcs/  # Scripts to download the data from WeatherBench2
+│
+├── era5_visuals/
+│   ├── figures/            # Created visuals
+│   └── visuels_era5.ipynb  # Notebook to create pretty representations of ERA5 variables
+│
+├── models/
+│   ├── ConvLSTM/           # ConvLSTM architecture and training scripts
+│   ├── unet/               # U-Net architecture and training scripts
+│   └── utils/              # Preprocessing, postprocessing and evaluation scripts
+│
+├── explainability/
+│   ├── integrated_gradients/  # Integrated Gradients implementation and aggregation methods
+│   ├── permutation/           # Permutation-based importance methods
+│   └── visualization/         # Tools for visualizing explanations
+│
+├── requirements.txt        # Python dependencies
+├── README.md               # Project documentation
+└── .gitignore
+```
 
-### Explaining a pretrained model
+### 🔍 Visualizing some variables
 
+### 📚 Downloading the dataset
 
+### 🌧️ Training a weather forecasting model
+
+### 🔬 Explaining a pretrained model
 
 
 ## 🤝 Authors
@@ -99,5 +92,6 @@ This repository was created and equally contributed to by :
 - Manon Arfib : [https://github.com/manonarfib](https://github.com/manonarfib)
 - Nathan Morin : [https://github.com/Nathan9842](https://github.com/Nathan9842)
 
-## Acknowledgment
-A huge thank you to Florestan Fontaine for his help and valuable advice.
+## ⭐ Acknowledgment
+
+A huge thank you to Florestan Fontaine from HeadMind Partners for his help and valuable advice.
