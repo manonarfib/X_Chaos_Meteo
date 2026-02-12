@@ -15,7 +15,7 @@ import torch
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device:", device)
 
-dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
+dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
 T, lead = 8, 1
 batch_size = 8
 
@@ -24,13 +24,14 @@ test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_work
 input_vars = list(dataset.X.coords["channel"].values)
 C_in = len(input_vars)
 
-model = PrecipConvLSTM(
-    input_channels=C_in,
-    hidden_channels=[32, 64],
-    kernel_size=3,
-).to(device)
+# model = PrecipConvLSTM(
+#     input_channels=C_in,
+#     hidden_channels=[32, 64],
+#     kernel_size=3,
+# ).to(device)
+model = WFUNet_with_train(T, 149, 221, C_in, 1, 8, 32, 0).to(device)
 
-ckpt_path = "epoch3_full.pt"
+ckpt_path = "checkpoints/run_141848/best_checkpoint_epoch3_batch_idx6479.pt" #"checkpoints/run_141807/best_checkpoint_epoch2_batch_idx5399.pt"
 ckpt = torch.load(ckpt_path, map_location=device)
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
