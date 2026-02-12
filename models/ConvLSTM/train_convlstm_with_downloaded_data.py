@@ -28,8 +28,10 @@ class Config:
     train_dataset_path: str = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_train.zarr"
     val_dataset_path: str = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
     T: int = 8
-    lead: int = 4
+    lead: int = 1
     batch_size: int = 16
+    without_precip: bool = False # put to False for og config 
+    max_lead: int = 1 # put to 1 if you want to only predict at one lead times, 8 to predict up to 48h
     
     # Steps
     number_of_days_for_gradient_acc = 30 # 1 mois
@@ -39,20 +41,17 @@ class Config:
     n_epochs: int = 3
     lr: float = 1e-3
     # loss : "mse", "w_mse", "w_dice", "w_mse_and_w_dice", "mse_and_w_dice", "advanced_torrential"
-    loss_type: str = "mse"
+    loss_type: str = "advanced_torrential"
 
     # Model
     hidden_channels: Tuple[int, int] = (32, 64)
     kernel_size: int = 3
 
     # Logging / checkpoint
-    checkpoint_dir: str = "checkpoints_mse_24h"
-    train_csv: str = "checkpoints_mse_24h/train_log.csv"
-    val_csv: str = "checkpoints_mse_24h/validation_log.csv"
+    checkpoint_dir: str = "checkpoints_advanced_torrential"
+    train_csv: str = "checkpoints_advanced_torrential/train_log.csv"
+    val_csv: str = "checkpoints_advanced_torrential/validation_log.csv"
     
-    without_precip: bool = False # put to False for og config 
-    max_lead: int = 1 # put to 1 if you want to only predict at one lead times, 8 to predict up to 48h
-
     # Misc
     seed: int = 42
 

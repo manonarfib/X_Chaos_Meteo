@@ -85,7 +85,7 @@ class ERA5Dataset(Dataset):
                     self.Y.isel(
                         time=slice(i + self.T, i + self.T + self.max_lead)
                     ).values
-                )  # shape: (L, H, W)
+                ) 
         else:    
             y = torch.from_numpy(
                 self.Y.isel(time=i + self.T + self.lead - 1).values

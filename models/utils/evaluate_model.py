@@ -15,11 +15,13 @@ import torch
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device:", device)
 
-dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
+dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
 T, lead = 8, 1
 batch_size = 8
+without_precip=False
+max_lead = 1
 
-dataset = ERA5Dataset(dataset_path, T=T, lead=lead)    
+dataset = ERA5Dataset(dataset_path, T=T, lead=lead, without_precip=without_precip, max_lead=max_lead)    
 test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
 input_vars = list(dataset.X.coords["channel"].values)
 C_in = len(input_vars)
@@ -28,9 +30,11 @@ model = PrecipConvLSTM(
     input_channels=C_in,
     hidden_channels=[32, 64],
     kernel_size=3,
+    output_size=max_lead
 ).to(device)
-
-ckpt_path = "epoch3_full.pt"
+# ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
+# ckpt_path = "epoch3_full.pt"
+ckpt_path = "checkpoints_advanced_torrential/epoch3_full.pt"
 ckpt = torch.load(ckpt_path, map_location=device)
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
@@ -50,12 +54,19 @@ tn_tot = {th: 0 for th in thresholds}
 print(len(test_loader))
 with torch.no_grad():
     for X_batch, y_batch, i in test_loader:
-        print(f"days {i[0]} to {(i[-1]+1)/4} computed")
-        X_batch = X_batch.to(device).float()
-        y_batch = y_batch.to(device).float()
-        
-        y_hat = model(X_batch).squeeze(1)  # (B,H,W)
-        y_hat = torch.clamp(y_hat, min=0.0)
+        print(f"days {i[0]/4} to {(i[-1]+1)/4} computed")
+        if max_lead==1:
+            X_batch = X_batch.to(device).float()
+            y_batch = y_batch.to(device).float()
+            
+            y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+            y_hat = torch.clamp(y_hat, min=0.0)
+        else:
+            X_batch = X_batch.to(device).float()
+            y_batch = y_batch[:, -1, :, :].to(device).float()
+            y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+            y_hat = y_hat[:, -1, :, :]
+            y_hat = torch.clamp(y_hat, min=0.0)
         
         # MSE & MAE
         mse_sum += nn.MSELoss(reduction='sum')(y_hat, y_batch).item()
@@ -77,43 +88,22 @@ mae = mae_sum / num_pixels
 
 # Global CSI
 csi_global = {}
-eps = 1e-8
-for th in thresholds:
-    csi_global[th] = tp_tot[th] / (tp_tot[th] + fp_tot[th] + fn_tot[th] + eps)
-
-# Global Heidke Skill Score (HSS) (better when close to 1)
 hss_global = {}
-eps = 1e-8
-for th in thresholds:
-    a = tp_tot[th]
-    b = fn_tot[th]
-    c = fp_tot[th]
-    d = tn_tot[th]
-    hss_global[th] = 2*(a*d-b*c) / ((a+c)*(c+d)+(a+b)*(b+d) + eps)
-
-# Probability of Detection (POD) (better when close to 1)
 pod_global = {}
-eps = 1e-8
-for th in thresholds:
-    a = tp_tot[th]
-    b = fn_tot[th]
-    c = fp_tot[th]
-    d = tn_tot[th]
-    pod_global[th] = a/ (a+b + eps)
-
-
-# False Alarm Ratio (better when close to 0)
 far_global = {}
 eps = 1e-8
 for th in thresholds:
     a = tp_tot[th]
-    b = fn_tot[th]
-    c = fp_tot[th]
+    b = fp_tot[th]
+    c = fn_tot[th]
     d = tn_tot[th]
+    csi_global[th] = a / (a + b + c + eps)
+    hss_global[th] = 2*(a*d-b*c) / ((a+c)*(c+d)+(a+b)*(b+d) + eps)
+    pod_global[th] = a/ (a+c + eps)
     far_global[th] = b / (a+b + eps)
 
 
-print(f"Test set metrics - MSE: {mse:.6f} | MAE: {mae:.6f}")
+print(f"Validation set metrics - MSE: {mse:.6f} | MAE: {mae:.6f}")
 for th, csi in csi_global.items():
     print(f"CSI @ {th} mm: {csi:.6f}")
 for th, hss in hss_global.items():
@@ -122,12 +112,4 @@ for th, pod in pod_global.items():
     print(f"POD @ {th} mm: {pod:.6f}")
 for th, far in far_global.items():
     print(f"FAR @ {th} mm: {far:.6f}")
-
-# Résultats du ConvLSTM de base (MSE, tp_6h in, prévisions à 6h) :
-# Test set metrics - MSE: 0.756467 | MAE: 0.336837
-# CSI @ 0.1 mm: 0.681179
-# CSI @ 1.0 mm: 0.587248
-# CSI @ 5.0 mm: 0.398580
-# CSI @ 10.0 mm: 0.264549
-
 
