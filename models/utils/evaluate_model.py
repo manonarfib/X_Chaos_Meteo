@@ -19,7 +19,7 @@ dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe
 T, lead = 8, 1
 batch_size = 8
 without_precip=False
-max_lead = 1
+max_lead = 8
 
 dataset = ERA5Dataset(dataset_path, T=T, lead=lead, without_precip=without_precip, max_lead=max_lead)    
 test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
@@ -32,9 +32,10 @@ model = PrecipConvLSTM(
     kernel_size=3,
     output_size=max_lead
 ).to(device)
-# ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
+ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
 # ckpt_path = "epoch3_full.pt"
-ckpt_path = "checkpoints_advanced_torrential/epoch3_full.pt"
+# ckpt_path = "checkpoints_advanced_torrential/epoch3_full.pt"
+# ckpt_path = "checkpoints_input_wout_precip/best_checkpoint_epoch3_batch3275.pt"
 ckpt = torch.load(ckpt_path, map_location=device)
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
@@ -54,7 +55,7 @@ tn_tot = {th: 0 for th in thresholds}
 print(len(test_loader))
 with torch.no_grad():
     for X_batch, y_batch, i in test_loader:
-        print(f"days {i[0]/4} to {(i[-1]+1)/4} computed")
+        print(f"days {i[0]/4} to {(i[-1]+1)/4} computed (out of {726})")
         if max_lead==1:
             X_batch = X_batch.to(device).float()
             y_batch = y_batch.to(device).float()
@@ -63,7 +64,7 @@ with torch.no_grad():
             y_hat = torch.clamp(y_hat, min=0.0)
         else:
             X_batch = X_batch.to(device).float()
-            y_batch = y_batch[:, -1, :, :].to(device).float()
+            y_batch = y_batch[:, -1, :, :].to(device).float() # sélectionne le temps 48h
             y_hat = model(X_batch).squeeze(1)  # (B,H,W)
             y_hat = y_hat[:, -1, :, :]
             y_hat = torch.clamp(y_hat, min=0.0)
@@ -113,3 +114,22 @@ for th, pod in pod_global.items():
 for th, far in far_global.items():
     print(f"FAR @ {th} mm: {far:.6f}")
 
+
+# Advanced Torrential Loss :
+# Validation set metrics - MSE: 1.116730 | MAE: 0.364156
+# CSI @ 0.1 mm: 0.551319
+# CSI @ 1.0 mm: 0.577553
+# CSI @ 5.0 mm: 0.006050
+# CSI @ 10.0 mm: 0.000000
+# HSS @ 0.1 mm: 0.560819
+# HSS @ 1.0 mm: 0.684876
+# HSS @ 5.0 mm: 0.011752
+# HSS @ 10.0 mm: 0.000000
+# POD @ 0.1 mm: 0.615849
+# POD @ 1.0 mm: 0.758479
+# POD @ 5.0 mm: 0.006051
+# POD @ 10.0 mm: 0.000000
+# FAR @ 0.1 mm: 0.159704
+# FAR @ 1.0 mm: 0.292293
+# FAR @ 5.0 mm: 0.010339
+# FAR @ 10.0 mm: 0.000000
