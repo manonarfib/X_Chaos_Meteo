@@ -3,7 +3,7 @@
 </h2>
 
 <p align="center">
-  <img src="era5_visuals/gifs/alex_europe.gif" width="400">
+  <img src="era5_visuals/figures/gifs/alex_europe.gif" width="400">
 </p>
 
 
@@ -42,8 +42,6 @@ To get a local copy of this project up and running, follow these steps.
 
 ## 📖 Usage
 
-### 🗂️ Repository structure description
-
 ### 🗂️ Repository Structure Description
 
 This repository is organized as follows:
@@ -78,11 +76,20 @@ X_Chaos_Meteo/
 
 ### 🔍 Visualizing some variables
 
+The notebook `era5_visuals/visuels_era5.ipynb` allows you to 
+
+
 ### 📚 Downloading the dataset
+
+
 
 ### 🌧️ Training a weather forecasting model
 
+
+
 ### 🔬 Explaining a pretrained model
+
+
 
 
 ## 🤝 Authors
