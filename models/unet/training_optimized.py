@@ -31,10 +31,10 @@ if __name__=="__main__":
     epochs = 5
     learning_rate = 1e-3 #1e-2
     # choisir entre w_mse_and_w_dice, w_mse, w_dice or mse
-    loss_type = "mse"
+    loss_type = "w_mse"
     weight_update_interval=120 #maj poids tous les mois
     val_loss_calculation_interval=4*720 #calcul loss tous les 2 ans
-    last_checkpoint_path="checkpoints/run_141807/best_checkpoint_epoch2_batch_idx5399.pt"#"checkpoints/run_140559/epoch1_full.pt"
+    last_checkpoint_path=None#"checkpoints/run_141807/best_checkpoint_epoch2_batch_idx5399.pt"#"checkpoints/run_140559/epoch1_full.pt"
     patience=3 #avant : 3
 
     print("\n[STEP] Création des DataLoaders...")
