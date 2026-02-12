@@ -28,12 +28,14 @@ if __name__=="__main__":
     filters = 32
     dropout = 0
     batch_size = 8
-    epochs = 3
-    learning_rate = 1e-3
+    epochs = 5
+    learning_rate = 1e-3 #1e-2
     # choisir entre w_mse_and_w_dice, w_mse, w_dice or mse
-    loss_type = "wmse"
+    loss_type = "w_mse"
     weight_update_interval=120 #maj poids tous les mois
     val_loss_calculation_interval=4*720 #calcul loss tous les 2 ans
+    last_checkpoint_path=None#"checkpoints/run_141807/best_checkpoint_epoch2_batch_idx5399.pt"#"checkpoints/run_140559/epoch1_full.pt"
+    patience=3 #avant : 3
 
     print("\n[STEP] Création des DataLoaders...")
     t3 = time.time()
@@ -73,7 +75,7 @@ if __name__=="__main__":
         optimizer,
         mode='min',       # on cherche à réduire la loss
         factor=0.5,       # le LR sera multiplié par 0.5
-        patience=3,       # on attend 2 évaluations sans amélioration
+        patience=patience,       # on attend 2 évaluations sans amélioration
     )
 
     parser = argparse.ArgumentParser()
@@ -98,7 +100,8 @@ if __name__=="__main__":
     print("learning_rate=",learning_rate)
     print("loss_type=", loss_type)
     print("weight_update_interval=", weight_update_interval)
-    print("val_loss_calculation_interval=", val_loss_calculation_interval)   
+    print("val_loss_calculation_interval=", val_loss_calculation_interval) 
+    print("patience", patience)  
 
     # ---- Train ---- #
     train_losses, val_losses = model.fit(
@@ -111,5 +114,6 @@ if __name__=="__main__":
         device=device,
         weight_update_interval=weight_update_interval,
         val_loss_calculation_interval=val_loss_calculation_interval,
-        save_path=save_path
+        save_path=save_path,
+        last_checkpoint_path=last_checkpoint_path
     )
