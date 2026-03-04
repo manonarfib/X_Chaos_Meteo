@@ -48,9 +48,9 @@ class Config:
     kernel_size: int = 3
 
     # Logging / checkpoint
-    checkpoint_dir: str = "checkpoints_advanced_torrential"
-    train_csv: str = "checkpoints_advanced_torrential/train_log.csv"
-    val_csv: str = "checkpoints_advanced_torrential/validation_log.csv"
+    checkpoint_dir: str = f"checkpoints/convlstm/{loss_type}"
+    train_csv: str = f"checkpoints/convlstm/{loss_type}/train_log.csv"
+    val_csv: str = f"checkpoints/convlstm/{loss_type}/validation_log.csv"
     
     # Misc
     seed: int = 42
