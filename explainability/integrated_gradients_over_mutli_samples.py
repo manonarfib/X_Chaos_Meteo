@@ -32,6 +32,19 @@ from models.ConvLSTM.convlstm import PrecipConvLSTM
 # ----------------------------
 # Plot helpers
 # ----------------------------
+TIME_STEP_HOURS = 6  # ERA5 resolution
+
+def rel_time_label(t_idx: int, t_ref: int) -> str:
+    """
+    t_ref = index du temps de référence (ex: t_view=7) qui correspond à 't' (0h).
+    t_idx=t_ref   -> 't'
+    t_idx=t_ref-1 -> 't-6h'
+    t_idx=t_ref-2 -> 't-12h'
+    ...
+    """
+    dh = (t_ref - t_idx) * TIME_STEP_HOURS
+    return "t" if dh == 0 else f"t-{dh}h"
+
 def infer_loss_name_from_ckpt_path(ckpt_path: str) -> str | None:
     """
     Tries to infer loss_name from ckpt path, e.g.:
@@ -97,7 +110,7 @@ def save_barplot(values, labels, out_path, title="", top_k=15):
     l = [labels[i] for i in idx][::-1]
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.barh(range(len(v)), v)
+    ax.barh(range(len(v)), v, color='mediumseagreen')
     ax.set_yticks(range(len(v)))
     ax.set_yticklabels(l)
     ax.set_title(title)
@@ -111,17 +124,27 @@ def save_barplot(values, labels, out_path, title="", top_k=15):
 
 def save_lineplot(values, out_path, title="", xlabel="t index (0..T-1)", ylabel="Importance (sum abs attribution)"):
     values = np.asarray(values)
+    T = len(values)
+    t_ref = T - 1  # on suppose que le dernier index correspond à 't' (comme ton t_view=7 quand T=8)
+    hours = -TIME_STEP_HOURS * (t_ref - np.arange(T))  # [-42, -36, ..., -6, 0] si T=8
+
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(range(len(values)), values, marker="o")
+    ax.plot(hours, values, marker="o", color='mediumseagreen')
     ax.set_title(title)
-    ax.set_xlabel(xlabel)
+    ax.set_xlabel("Lead time relative to prediction (hours)")
     ax.set_ylabel(ylabel)
     ax.grid(True, linestyle="--", linewidth=0.5)
+
+    # ticks explicites
+    ax.set_xticks(hours)
+    ax.set_xticklabels(["t" if h == 0 else f"t{int(h)}h" for h in hours])
+
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
     print(f"[FIG] Saved: {out_path}")
+
 
 def save_barplot_mean_std(mean_vals, std_vals, labels, out_path, title="", top_k=15):
     mean_vals = np.asarray(mean_vals)
@@ -133,7 +156,7 @@ def save_barplot_mean_std(mean_vals, std_vals, labels, out_path, title="", top_k
     l = [labels[i] for i in idx][::-1]
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.barh(range(len(m)), m, xerr=s)
+    ax.barh(range(len(m)), m, xerr=s, color='mediumseagreen')
     ax.set_yticks(range(len(m)))
     ax.set_yticklabels(l)
     ax.set_title(title)
@@ -148,15 +171,25 @@ def save_barplot_mean_std(mean_vals, std_vals, labels, out_path, title="", top_k
 def save_lineplot_mean_std(mean_vals, std_vals, out_path, title="", xlabel="t index", ylabel="Importance"):
     mean_vals = np.asarray(mean_vals)
     std_vals = np.asarray(std_vals)
-    x = np.arange(len(mean_vals))
+
+    T = len(mean_vals)
+    t_ref = T - 1
+    hours = -TIME_STEP_HOURS * (t_ref - np.arange(T))
+
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(x, mean_vals, marker="o")
-    ax.fill_between(x, mean_vals - std_vals, mean_vals + std_vals, alpha=0.25)
+    ax.plot(hours, mean_vals, marker="o", color='mediumseagreen')
+    ax.fill_between(hours, mean_vals - std_vals, mean_vals + std_vals, alpha=0.25)
+
     ax.set_title(title)
-    ax.set_xlabel(xlabel)
+    ax.set_xlabel("Lead time relative to prediction (hours)")
     ax.set_ylabel(ylabel)
     ax.grid(True, linestyle="--", linewidth=0.5)
+
+    ax.set_xticks(hours)
+    ax.set_xticklabels(["t" if h == 0 else f"t{int(h)}h" for h in hours])
+
+
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path, dpi=200, bbox_inches="tight")
@@ -786,9 +819,19 @@ def main():
         attr_c = attr_abs[0, :, c_idx].sum(dim=0).detach().cpu().numpy()  # (H,W)
 
         # Variable à différents temps: t=7,6,5
-        var_t7 = X[0, 7, c_idx].detach().cpu().numpy()
-        var_t6 = X[0, 6, c_idx].detach().cpu().numpy()
-        var_t5 = X[0, 5, c_idx].detach().cpu().numpy()
+        t_idxs = [7, 6, 5]
+
+        var_t7 = X[0, t_idxs[0], c_idx].detach().cpu().numpy()
+        var_t6 = X[0, t_idxs[1], c_idx].detach().cpu().numpy()
+        var_t5 = X[0, t_idxs[2], c_idx].detach().cpu().numpy()
+
+        t_ref = t_view  # ici 7 = 't'
+        var_titles = [
+            f"{var_name} input ({rel_time_label(t_idxs[0], t_ref)})",
+            f"{var_name} input ({rel_time_label(t_idxs[1], t_ref)})",
+            f"{var_name} input ({rel_time_label(t_idxs[2], t_ref)})",
+        ]
+
 
         plot_tp_var_times_attr_contour(
             tp_map=tp_in,
@@ -798,12 +841,13 @@ def main():
             europe_mask=europe_mask,
             out_path=os.path.join(out_dir, f"sample{sample_idx}/{method}_top{rank}_{var_name}_tp_t{t_view}.png"),
             title=f"Sample {sample_idx} | Top-{rank} variable: {var_name} | method={method}",
-            tp_title=f"{tp_name} input (t={t_view})",
+            tp_title=f"{tp_name} input (t)",
             attr_title=f"{method.upper()} abs attribution for {var_name} (sum over T)",
-            var_titles=[f"{var_name} input (t=7)", f"{var_name} input (t=6)", f"{var_name} input (t=5)"],
+            var_titles=var_titles,
             contour_q=contour_q,
-            var_cmap="cividis",  # or "cividis"
+            var_cmap="cividis",
         )
+
 
 
     print("[DONE] Outputs written to:", out_dir)
