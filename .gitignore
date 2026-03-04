@@ -3,7 +3,8 @@ mini_val_batches.pt
 __pycache__/
 logs/
 checkpoints*/
-demonstrator/demo*/
+inference/compare_predict_maps_outputs
+inference/predict_maps_outputs
 *.pt
 *.pth
 *.ckpt
