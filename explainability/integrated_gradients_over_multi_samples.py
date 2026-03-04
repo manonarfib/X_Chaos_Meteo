@@ -618,7 +618,7 @@ def main():
     lead_str = lead_to_str(LEAD)
     model_tag = model_type
     loss_tag = LOSS_NAME.lower()
-    out_dir = f"explainability/ig_outputs/model_{model_tag}/{loss_tag}_{lead_str}_{N_SAMPLES_AGG}"
+    out_dir = f"explainability/ig_outputs/model_{model_tag}/{loss_tag}_{lead_str}"
     os.makedirs(out_dir, exist_ok=True)
     print("[OUT_DIR]", out_dir)
 
