@@ -19,10 +19,10 @@ from models.unet.model_without_collapse import WFUNet_with_train
 MODEL_TYPE = "convlstm"  # "convlstm" or "unet"
 
 CKPT_PATHS = {
-    "MSE": "checkpoints_mse/epoch3_full.pt",
-    "W_MSE": "checkpoints_w_mse/epoch3_full.pt",
-    "MSE+W_DICE": "checkpoints_mse_and_w_dice/epoch3_full.pt",
-    "ADV_TORRENTIAL": "checkpoints_advanced_torrential/epoch3_full.pt",
+    "MSE": "checkpoints/convlstm/mse/epoch3_full.pt",
+    "W_MSE": "checkpoints/convlstm/w_mse/epoch3_full.pt",
+    "MSE+W_DICE": "checkpoints/convlstm/mse_and_w_dice/epoch3_full.pt",
+    "ADV_TORRENTIAL": "checkpoints/convlstm/advanced_torrential/epoch3_full.pt",
 }
 
 LEAD = 1  # lead in 6h steps -> prediction at t_lead = LEAD*6 hours
@@ -212,7 +212,8 @@ def main():
     y_true = y[0].detach().cpu().numpy()
 
     # Output paths (new folder)
-    out_dir = f"inference/compare_predict_maps_outputs/sample{SAMPLE_IDX}/lead{t_lead}h"
+    model_tag = MODEL_TYPE.lower().strip()
+    out_dir = f"inference/compare_predict_maps_outputs/model_{model_tag}/sample{SAMPLE_IDX}"
     maps_path = f"{out_dir}/maps_truth_vs_" + "_vs_".join([k.lower() for k in CKPT_PATHS.keys()]) + ".png"
     box_path  = f"{out_dir}/boxplot_truth_vs_" + "_vs_".join([k.lower() for k in CKPT_PATHS.keys()]) + ".png"
 

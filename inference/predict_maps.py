@@ -19,7 +19,7 @@ from models.unet.model_without_collapse import WFUNet_with_train
 # ============================================================
 MODEL_TYPE = "convlstm"  # "convlstm" or "unet"
 LOSS_NAME = "mse"        # e.g. "mse", "weighted_mse", "dice_weighted"
-CKPT_PATH = "ConvLSTM_checkpoints/checkpoints_mse/epoch3_full.pt"  # or ".../best_checkpoint_epoch1_batch528.pt"
+CKPT_PATH = "checkpoints/convlstm/mse/epoch3_full.pt"  # or ".../best_checkpoint_epoch1_batch528.pt"
 LEAD = 1  # lead in 6h steps -> prediction at t_lead = LEAD*6 hours
 SAMPLE_IDX = 50
 DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
@@ -211,7 +211,8 @@ def main():
     y_true = y[0].detach().cpu().numpy()
     y_pred = y_hat[0].detach().cpu().numpy()
 
-    out_dir = f"inference/predict_maps_outputs/sample{SAMPLE_IDX}"
+    model_tag = MODEL_TYPE.lower().strip()
+    out_dir = f"inference/compare_predict_maps_outputs/model_{model_tag}/sample{SAMPLE_IDX}"
     maps_path = f"{out_dir}/{ckpt_stem}_maps_{LOSS_NAME}_prediction_{t_lead}h.png"
     box_path = f"{out_dir}/{ckpt_stem}_boxplot_{LOSS_NAME}_prediction_{t_lead}h.png"
 
