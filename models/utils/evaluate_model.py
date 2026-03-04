@@ -12,34 +12,60 @@ from models.unet.model_without_collapse import WFUNet_with_train
 
 import torch
 
+MODEL_TYPE = "unet" 
+LEAD=1
+T=8
+BATCH_SIZE=16
+DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
+MAX_LEAD=1
+CKPT_PATH="checkpoints/run_144946/best_checkpoint_epoch3_batch_idx5399.pt"
+
+WITHOUT_PRECIP=False
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device:", device)
 
-dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
-T, lead = 8, 1
-batch_size = 8
+# dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
+# T, lead = 8, 1
+# batch_size = 8
 without_precip=False
-max_lead = 8
+# max_lead = 8
 
-dataset = ERA5Dataset(dataset_path, T=T, lead=lead, without_precip=without_precip, max_lead=max_lead)    
-test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+dataset = ERA5Dataset(DATASET_PATH, T=T, lead=LEAD, without_precip=without_precip, max_lead=MAX_LEAD)    
+test_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 input_vars = list(dataset.X.coords["channel"].values)
 C_in = len(input_vars)
 
-model = PrecipConvLSTM(
-    input_channels=C_in,
-    hidden_channels=[32, 64],
-    kernel_size=3,
-    output_size=max_lead
-).to(device)
-ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
+
+def build_model(model_type: str, C_in: int, device: torch.device, max_lead) -> torch.nn.Module:
+    model_type = model_type.lower().strip()
+    if model_type == "convlstm":
+        model = PrecipConvLSTM(
+            input_channels=C_in,
+            hidden_channels=[32, 64],
+            kernel_size=3,
+            output_size=MAX_LEAD
+        ).to(device)
+        return model
+    elif model_type == "unet":
+        # signature in your commented line: WFUNet_with_train(8,149,221,33,1, 8,32,0)
+        # If you change T/H/W/C_in etc., update these args accordingly.
+        model = WFUNet_with_train(T, 149, 221, C_in, max_lead, 8, 32, 0).to(device)
+        return model
+    else:
+        raise ValueError(f"Unknown MODEL_TYPE='{model_type}'. Use 'convlstm' or 'unet'.")
+
+
+model = build_model(MODEL_TYPE, C_in, device, MAX_LEAD)
+
+# ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
 # ckpt_path = "epoch3_full.pt"
 # ckpt_path = "checkpoints_advanced_torrential/epoch3_full.pt"
 # ckpt_path = "checkpoints_input_wout_precip/best_checkpoint_epoch3_batch3275.pt"
-ckpt = torch.load(ckpt_path, map_location=device)
+ckpt = torch.load(CKPT_PATH, map_location=device)
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
-print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {ckpt_path}")
+print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {CKPT_PATH}")
 
 # Metrics accumulators
 mse_sum = 0.0
@@ -56,7 +82,7 @@ print(len(test_loader))
 with torch.no_grad():
     for X_batch, y_batch, i in test_loader:
         print(f"days {i[0]/4} to {(i[-1]+1)/4} computed (out of {726})")
-        if max_lead==1:
+        if MAX_LEAD==1:
             X_batch = X_batch.to(device).float()
             y_batch = y_batch.to(device).float()
             
