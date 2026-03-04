@@ -34,11 +34,12 @@ def load_dataset(dataset_path: str, T: int, lead: int):
 
 
 @st.cache_resource
-def build_model(C_in: int, hidden_channels, kernel_size: int, ckpt_path: str, device):
+def build_model(C_in: int, hidden_channels, kernel_size: int, ckpt_path: str, device, output_size=1):
     model = PrecipConvLSTM(
         input_channels=C_in,
         hidden_channels=hidden_channels,
         kernel_size=kernel_size,
+        output_size=output_size
     ).to(device)
 
     ckpt = torch.load(ckpt_path, map_location=device)
@@ -103,6 +104,18 @@ def build_target_index(times, T, lead_hours):
         target_to_index[target_dt] = t0_idx
 
     return target_to_index
+
+# def build_target_index(times, T, lead):
+#     target_to_index = {}
+
+#     max_start = len(times) - T - lead + 1
+
+#     for t0 in range(max_start):
+#         first_pred_time = times[t0 + T]
+
+#         target_to_index[first_pred_time] = t0
+
+#     return target_to_index
 
 # =====================================================
 # Plotly map (zoom + hover pixel)
@@ -414,8 +427,8 @@ def page_inference():
     # ckpt_choice = st.radio("Modèle", ["convlstm", "unet"])
 
     ckpt_paths = {
-        ("ConvLSTM", 1): "demonstrator/checkpoints/convlstm_mse_lead_time_1.pt",
-        ("ConvLSTM", 8): "demonstrator/checkpoints/convlstm_mse_lead_time_8.pt",
+        ("ConvLSTM", 1): "checkpoints/convlstm/mse/epoch3_full.pt",
+        ("ConvLSTM", 8): "checkpoints/convlstm/mse_multi/epoch3_full.pt",
         ("UNet", 1): "/mounts/models/unet_best.pt"
     }
     
@@ -493,7 +506,8 @@ def page_inference():
                     hidden_channels,
                     kernel_size,
                     ckpt_path,
-                    device
+                    device,
+                    output_size=lead
                 )
 
             with st.spinner("Exécution de l'inférence..."):
@@ -506,9 +520,9 @@ def page_inference():
         y_true = np.squeeze(y_true)
         y_pred = np.squeeze(y_pred)
 
-        if y_true.ndim != 2 or y_pred.ndim != 2:
-            st.error(f"Sortie non 2D — formes {y_true.shape} / {y_pred.shape}")
-            return
+        # if y_true.ndim != 2 or y_pred.ndim != 2:
+        #     st.error(f"Sortie non 2D — formes {y_true.shape} / {y_pred.shape}")
+        #     return
         
         if lead == 1:
             st.session_state.y_true = y_true
