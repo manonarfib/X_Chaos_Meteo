@@ -211,31 +211,34 @@ def plot_clean_map(arr: np.ndarray, title: str,
                    lon_min=-12.5, lon_max=42.5,
                    lat_min=35, lat_max=72,
                    cmap="Blues",
-                   figsize=(10, 8)):  # <-- ajouter figsize ici
-    
+                   figsize=(10, 8),
+                   vmin=None,
+                   vmax=None):
+
     H, W = arr.shape
     lons = np.linspace(lon_min, lon_max, W)
     lats = np.linspace(lat_min, lat_max, H)
 
-    fig = plt.figure(figsize=figsize)  # <-- utiliser figsize ici
+    fig = plt.figure(figsize=figsize)
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
 
-    # Ajouter fond de carte simplifié
-    # ax.add_feature(cfeature.LAND.with_scale('50m'))
     ax.add_feature(cfeature.COASTLINE.with_scale('50m'))
     ax.add_feature(cfeature.BORDERS.with_scale('50m'), linestyle=':')
 
-    # Afficher la donnée
-    img = ax.imshow(arr, origin='lower', extent=[lon_min, lon_max, lat_min, lat_max],
-                    cmap=cmap, alpha=0.8, aspect='auto')
-
-    # Colorbar
-    plt.colorbar(img, ax=ax, orientation='vertical', label='Précipitations (en mm)')
-
+    img = ax.imshow(
+        arr,
+        origin='lower',
+        extent=[lon_min, lon_max, lat_min, lat_max],
+        cmap=cmap,
+        alpha=0.8,
+        aspect='auto',
+        vmin=vmin,
+        vmax=vmax
+    )
+    
+    fig.colorbar(img, ax=ax, orientation='vertical', label='Précipitations (mm)')
     ax.set_title(title)
-    ax.set_xlabel("Longitude")
-    ax.set_ylabel("Latitude")
 
     return fig
 
@@ -584,21 +587,25 @@ def page_inference():
         st.write(f"Temps affiché : {current_time}")
 
     tab1, tab2, tab3 = st.tabs(["Prediction", "Truth", "Error"])
+    vmin_true = np.min(y_true_seq)
+    vmax_true = np.max(y_true_seq)
+    vmin_pred = np.min(y_pred_seq)
+    vmax_pred = np.max(y_pred_seq)
 
     with tab1:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4)))
+            st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
 
     with tab2:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.pyplot(plot_clean_map(y_true_step, "Truth", figsize=(5,4)))
+            st.pyplot(plot_clean_map(y_true_step, "Truth", figsize=(5,4), vmin=vmin_true, vmax=vmax_true))
 
     with tab3:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.pyplot(plot_clean_map(err, "Error", cmap="Reds", figsize=(5,4)))
+            st.pyplot(plot_clean_map(err, "Error", cmap="Reds", figsize=(5,4), vmin=vmin_true, vmax=vmax_true))
 
 # =====================================================
 # Main
