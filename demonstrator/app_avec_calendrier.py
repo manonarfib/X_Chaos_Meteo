@@ -24,11 +24,11 @@ def get_device():
 
 @st.cache_resource
 def load_dataset(dataset_path: str, T: int, lead: int):
-    ds = ERA5Dataset(dataset_path, T=T, lead=lead)
+    ds = ERA5Dataset(dataset_path, T=T, max_lead=lead)
     input_vars = list(ds.X.coords["channel"].values)
 
-    # récupérer les timestamps
-    times = ds.X.coords["time"].values  # numpy datetime64
+    times = ds.X.coords["time"].values
+    times = np.array(times).astype("datetime64[s]").astype(object)
 
     return ds, input_vars, times
 
@@ -50,7 +50,7 @@ def build_model(C_in: int, hidden_channels, kernel_size: int, ckpt_path: str, de
     return model, epoch
 
 
-def run_inference(model, dataset, sample_idx, device):
+def run_inference(model, dataset, sample_idx, device, lead):
     X, y, _ = dataset[sample_idx]
     with torch.no_grad():
         X = X.unsqueeze(0).to(device)
@@ -76,46 +76,45 @@ def get_index_from_datetime(times, selected_datetime):
         return None
     return int(idx[0])
 
-def build_target_index(times, T, lead_hours):
-    times = np.array(times).astype('datetime64[h]')
-    py_datetimes = times.astype(object)
+# def build_target_index(times, T, lead_hours):
+#     times = np.array(times).astype('datetime64[h]')
+#     py_datetimes = times.astype(object)
 
-    target_to_index = {}
-
-    for t0_idx in range(len(times)):
-
-        t0 = times[t0_idx]
-
-        # vérifier qu'on a assez de données pour l'input
-        if t0_idx + T + lead_hours -1 > len(times):
-            break
-
-        target_time = t0 + np.timedelta64((T+lead_hours-1)*6, 'h')
-
-        # trouver cet instant dans le dataset
-        matches = np.where(times == target_time)[0]
-
-        if len(matches) == 0:
-            continue
-
-        target_idx = matches[0]
-        target_dt = py_datetimes[target_idx]
-
-        target_to_index[target_dt] = t0_idx
-
-    return target_to_index
-
-# def build_target_index(times, T, lead):
 #     target_to_index = {}
 
-#     max_start = len(times) - T - lead + 1
+#     for t0_idx in range(len(times)):
 
-#     for t0 in range(max_start):
-#         first_pred_time = times[t0 + T]
+#         t0 = times[t0_idx]
 
-#         target_to_index[first_pred_time] = t0
+#         # vérifier qu'on a assez de données pour l'input
+#         if t0_idx + T + lead_hours -1 > len(times):
+#             break
+
+#         target_time = t0 + np.timedelta64((T+lead_hours-1)*6, 'h')
+
+#         # trouver cet instant dans le dataset
+#         matches = np.where(times == target_time)[0]
+
+#         if len(matches) == 0:
+#             continue
+
+#         target_idx = matches[0]
+#         target_dt = py_datetimes[target_idx]
+
+#         target_to_index[target_dt] = t0_idx
 
 #     return target_to_index
+
+def build_target_index(times, T, lead):
+    target_to_index = {}
+
+    max_start = len(times) - T - lead + 1
+
+    for t0 in range(max_start):
+        first_pred_time = times[t0 + T]  # ✅ début des prédictions
+        target_to_index[first_pred_time] = t0
+
+    return target_to_index
 
 # =====================================================
 # Plotly map (zoom + hover pixel)
@@ -232,7 +231,7 @@ def plot_clean_map(arr: np.ndarray, title: str,
                     cmap=cmap, alpha=0.8, aspect='auto')
 
     # Colorbar
-    plt.colorbar(img, ax=ax, orientation='vertical', label='Pluie (en mm)')
+    plt.colorbar(img, ax=ax, orientation='vertical', label='Précipitations (en mm)')
 
     ax.set_title(title)
     ax.set_xlabel("Longitude")
@@ -372,6 +371,8 @@ def page_inference():
         Seules environ deux semaines du dataset de test ont été chargées sur le git, les données disponibles pour l'inférence correspondent donc seulement aux données 
         disponibles (du 01/01/2020 au 16/01/2020). Si d'autres données sont téléchargées avec le fichier "download_dataset_from_gcs/download_dataset.py",
         elles peuvent être utilisées. Il suffit alors de modifier le chemin d'accès aux données en sélectionnant 'mon dataset' ci-dessous.
+        
+        48 heures avant de données avant la date d'inférence souhaitée sont nécessaires.
         """)
     
     dataset_choice = st.selectbox(
@@ -482,7 +483,7 @@ def page_inference():
     # 🎯 récupérer t0
     sample_idx = target_to_index[selected_dt]
 
-    st.write(f"Date prédite : {selected_dt}")
+    st.write(f"Début de la prédiction : {selected_dt}")
     # st.write(f"Index utilisé (t0) : {sample_idx}")
 
     # ---------------- Run button ----------------
@@ -511,66 +512,88 @@ def page_inference():
                 )
 
             with st.spinner("Exécution de l'inférence..."):
-                y_true, y_pred = run_inference(model, dataset, sample_idx, device)
+                y_true, y_pred = run_inference(model, dataset, sample_idx, device, lead)
 
         except Exception as e:
             st.error(f"Erreur lors de l'inférence : {e}")
             return
 
-        y_true = np.squeeze(y_true)
-        y_pred = np.squeeze(y_pred)
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+
+        # 🔥 garantir (lead, H, W)
+        if y_pred.ndim == 2:
+            y_pred = y_pred[None, ...]
+            y_true = y_true[None, ...]
+
+        elif y_pred.ndim == 3:
+            pass  # déjà bon
+
+        else:
+            st.error(f"Shape inattendue : {y_pred.shape}")
+            return
+        
+        st.session_state.sample_idx = sample_idx
+        st.session_state.selected_dt = selected_dt
 
         # if y_true.ndim != 2 or y_pred.ndim != 2:
         #     st.error(f"Sortie non 2D — formes {y_true.shape} / {y_pred.shape}")
         #     return
         
-        if lead == 1:
-            st.session_state.y_true = y_true
-            st.session_state.y_pred = y_pred
-        else:
-            # stocker toute la séquence
-            st.session_state.y_true_seq = y_true
-            st.session_state.y_pred_seq = y_pred
-
+        st.session_state.y_true_seq = y_true
+        st.session_state.y_pred_seq = y_pred
         st.session_state.has_prediction = True
 
     # ---------------- Display ----------------
-    if not st.session_state.has_prediction:
-        st.info("Cliquer sur 'Lancer l'inférence' pour générer une prédiction.")
+    if not st.session_state.get("has_prediction", False):
+        st.info("Clique sur 'Run inference' pour générer une prédiction.")
         return
 
-    if lead == 1:
-        y_true = st.session_state.y_true
-        y_pred = st.session_state.y_pred
-        err = np.abs(y_pred - y_true)
-    else:
-        y_true_seq = st.session_state.y_true_seq
-        y_pred_seq = st.session_state.y_pred_seq
+    y_true_seq = st.session_state.y_true_seq
+    y_pred_seq = st.session_state.y_pred_seq
+    sample_idx = st.session_state.sample_idx
+    selected_dt = st.session_state.selected_dt
 
+    lead = y_pred_seq.shape[0]
+    
+    if lead>1:
+        # intervalle complet
+        end_time = times[sample_idx + T + lead - 1]
+        st.write(f"Intervalle prédit : {selected_dt} → {end_time}")
+
+    # 🎯 slider temporel (toujours présent)
+    if lead > 1:
         step = st.slider(
             "Pas de prédiction",
             min_value=0,
-            max_value=lead-1,
+            max_value=lead - 1,
             value=0
         )
+    else:
+        step = 0
+    
+    y_pred_step = y_pred_seq[step]
+    y_true_step = y_true_seq[step]
 
-        y_true = y_true_seq[step]
-        y_pred = y_pred_seq[step]
-        err = np.abs(y_pred - y_true)
+    err = np.abs(y_pred_step - y_true_step)
 
-        st.write(f"Lead step affiché : t + {step+1}")
+    # temps réel affiché
+    current_time = times[sample_idx + T + step]
+
+    if lead>1:
+        st.write(f"Temps affiché : {current_time}")
 
     tab1, tab2, tab3 = st.tabs(["Prediction", "Truth", "Error"])
 
     with tab1:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.pyplot(plot_clean_map(y_pred, "Prediction", figsize=(5,4)))
+            st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4)))
 
     with tab2:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.pyplot(plot_clean_map(y_true, "Truth", figsize=(5,4)))
+            st.pyplot(plot_clean_map(y_true_step, "Truth", figsize=(5,4)))
 
     with tab3:
         col1, col2, col3 = st.columns([1, 2, 1])
