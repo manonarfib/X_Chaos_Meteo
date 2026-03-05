@@ -328,7 +328,7 @@ def page_inference():
     )
 
     ckpt_paths = {
-        "convlstm": "epoch3_full.pt",
+        "convlstm": "demonstrator/checkpoints/convlstm_mse_lead_time_1.pt",
         "unet": "/mounts/models/unet_best.pt"
     }
     ckpt_path = ckpt_paths[ckpt_choice]

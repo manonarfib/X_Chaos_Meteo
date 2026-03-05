@@ -4,7 +4,8 @@ from dask.diagnostics import ProgressBar
 import os
 
 SRC_ZARR = "gs://weatherbench2/datasets/era5/1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr"
-OUT_ZARR = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
+# OUT_ZARR = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
+OUT_ZARR = "/usr/users/x_chaos_meteo/arfib_lou/X_Chaos_Meteo/era5_europe_ml_test_2_weeks.zarr"
 
 from datetime import datetime, timedelta
 
@@ -28,9 +29,14 @@ def generate_time_blocks(start_date, end_date, days_per_block=8):
     return blocks
 
 # test time blocks :
+# TIME_BLOCKS = generate_time_blocks(
+#     start_date="2020-01-01",
+#     end_date="2022-01-01",
+#     days_per_block=8
+# )
 TIME_BLOCKS = generate_time_blocks(
     start_date="2020-01-01",
-    end_date="2022-01-01",
+    end_date="2020-01-16",
     days_per_block=8
 )
 
@@ -178,10 +184,13 @@ for start, end in TIME_BLOCKS:
         
     else:
         if os.path.exists(OUT_ZARR):
+            
+            ds_out = xr.open_zarr(OUT_ZARR)
+            existing_times = set(ds_out.time.values)
+            
             max_existing_time = ds_out.time.max().values
             print("Last existing time step :", max_existing_time)
 
-            existing_times = set(ds_out.time.values)
             new_times = set(ds.time.values)
 
             overlap = existing_times & new_times
