@@ -357,7 +357,7 @@ def page_home():
     )
 
     # Section Fonctionnalités avec colonnes
-    st.header("⚙️ Fonctionnalités")
+    st.header("🧩 Fonctionnalités")
     col1, col2 = st.columns(2)
     col1.markdown("""
     - Choix du modèle (ConvLSTM / U-Net)  
@@ -430,7 +430,7 @@ def page_inference():
     
     st.markdown(
         """
-        Seules environ deux semaines du dataset de test ont été chargées sur le git, les données disponibles pour l'inférence correspondent donc seulement aux données 
+        Seulement environ deux semaines du dataset de test ont été chargées sur le git, les données disponibles pour l'inférence correspondent donc seulement aux données 
         disponibles (du 01/01/2020 au 16/01/2020). Si d'autres données sont téléchargées avec le fichier "download_dataset_from_gcs/download_dataset.py",
         elles peuvent être utilisées. Il suffit alors de modifier le chemin d'accès aux données en sélectionnant 'mon dataset' ci-dessous.
         
@@ -492,7 +492,11 @@ def page_inference():
     ckpt_paths = {
         ("ConvLSTM", 1): "checkpoints/convlstm/mse/epoch3_full.pt",
         ("ConvLSTM", 8): "checkpoints/convlstm/mse_multi/epoch3_full.pt",
-        ("UNet", 1): "/mounts/models/unet_best.pt"
+        ("UNet", 1): (
+            "checkpoints/unet/best_mse_true.pt"
+            if os.path.exists("checkpoints/unet/best_mse_true.pt")
+            else "checkpoints/unet/best_mse.pt"
+        )
     }
     
     ckpt_path = ckpt_paths[(ckpt_choice, lead)]
@@ -500,7 +504,6 @@ def page_inference():
 
     # ---------------- Load dataset (UNE FOIS) ----------------
     T = 8
-    # lead = 1
     
     dataset, input_vars, times = load_dataset(dataset_path, T, lead)
     C_in = len(input_vars)
@@ -558,13 +561,11 @@ def page_inference():
             with st.spinner("Chargement du modèle..."):
 
                 if ckpt_choice == "ConvLSTM":
+                    
                     hidden_channels = [32, 64]
                     kernel_size = 3
-                else:
-                    hidden_channels = [64, 128]
-                    kernel_size = 3
-
-                model, epoch = build_model(
+                    
+                    model, _ = build_model(
                     C_in,
                     hidden_channels,
                     kernel_size,
@@ -572,6 +573,12 @@ def page_inference():
                     device,
                     output_size=lead
                 )
+                                        
+                else:
+                    model = WFUNet_with_train(T, 149, 221, C_in, 1, 8, 32, 0).to(device)
+                    ckpt = torch.load(ckpt_path, map_location=device)
+                    model.load_state_dict(ckpt["model_state_dict"])
+                    model.eval()
 
             with st.spinner("Exécution de l'inférence..."):
                 y_true, y_pred = run_inference(model, dataset, sample_idx, device, lead)
