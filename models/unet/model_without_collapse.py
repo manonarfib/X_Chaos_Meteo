@@ -476,7 +476,7 @@ class WFUNet_with_train(WFUNet):
                     val_batches_loss = self.evaluate(val_loader, loss_type, device)
 
                     if previous_val_b_loss>val_batches_loss:
-                        best_checkpoint = os.path.join(save_path, f"best_checkpoint_epoch{epoch}_batch_idx{batch_idx}.pt")
+                        best_checkpoint = os.path.join(save_path, f"best_checkpoint.pt")
                         torch.save({
                             "epoch": epoch,
                             "model_state_dict": self.state_dict(),
