@@ -42,7 +42,7 @@ To get a local copy of this project up and running, follow these steps.
 3. **Downloading UNet checkpoint**
 
 If you can, you should install the Git LFS extension (see [https://git-lfs.com/](https://git-lfs.com/)), which handles the versioning of large files. In that case, you only need to run ```git lfs install``` (you only need to run that once in your git ), and the checkpoint is automatically usable from ```checkpoints/unet```.
-However, if you can't install the extension (beware, it isn't installed on the DCE), you can clone the repository as usual, then go to [https://github.com/manonarfib/X_Chaos_Meteo/tree/main/checkpoints/unet](https://github.com/manonarfib/X_Chaos_Meteo/tree/main/checkpoints/unet), and manually download the checkpoint. Then you have to **rename** the file (we recommend to rename it ````best_mse_true.pt```), and drag and drop it in ```checkpoints/unet```.
+However, if you can't install the extension (beware, it isn't installed on the DCE), you can clone the repository as usual, then go to [https://github.com/manonarfib/X_Chaos_Meteo/tree/main/checkpoints/unet](https://github.com/manonarfib/X_Chaos_Meteo/tree/main/checkpoints/unet), and manually download the checkpoint. Then you have to **rename** the file (we recommend to rename it ```best_mse_true.pt```), and drag and drop it in ```checkpoints/unet```.
 
 ## 📖 Usage
 
