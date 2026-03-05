@@ -63,6 +63,65 @@ def permutation_importance_batch(model, X_flat, y_flat, metric, T=8, C=33, H=149
 
     return importances, baseline
 
+import os
+def save_barplot_mean_std(mean_vals, std_vals, labels, out_path, title="", top_k=15): 
+    mean_vals = np.asarray(mean_vals) 
+    std_vals = np.asarray(std_vals) 
+    idx = np.argsort(-mean_vals)[:top_k] 
+    m = mean_vals[idx][::-1] 
+    s = std_vals[idx][::-1] 
+    l = [labels[i] for i in idx][::-1] 
+    fig, ax = plt.subplots(figsize=(9, 5)) 
+    ax.barh(range(len(m)), m, xerr=s, color='mediumseagreen') 
+    ax.set_yticks(range(len(m))) 
+    ax.set_yticklabels(l) 
+    ax.set_title(title) 
+    ax.set_xlabel("Importance (mean ± std over samples)") 
+    plt.tight_layout() 
+    os.makedirs(os.path.dirname(out_path), exist_ok=True) 
+    plt.savefig(out_path, dpi=200, bbox_inches="tight") 
+    plt.close(fig) 
+    print(f"[FIG] Saved: {out_path}") 
+    
+    
+def save_lineplot_mean_std(mean_vals, std_vals, out_path,
+                           title="",
+                           xlabel="Temps",
+                           ylabel="Importance",
+                           xtick_labels=None):
+
+    mean_vals = np.asarray(mean_vals)
+    std_vals = np.asarray(std_vals)
+
+    x = np.arange(len(mean_vals))
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+
+    ax.plot(x, mean_vals, marker="o", color='mediumseagreen')
+    ax.fill_between(x,
+                    mean_vals - std_vals,
+                    mean_vals + std_vals,
+                    alpha=0.25,
+                    color='mediumseagreen')
+
+    if xtick_labels is not None:
+        assert len(xtick_labels) == len(x), "xtick_labels doit avoir la même longueur que mean_vals"
+        ax.set_xticks(x)
+        ax.set_xticklabels(xtick_labels)
+
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, linestyle="--", linewidth=0.5)
+
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    plt.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"[FIG] Saved: {out_path}")
+
+
 
 if __name__=="__main__":
     # ------------------------------
@@ -106,57 +165,75 @@ if __name__=="__main__":
     n_images = len(test_dataset)
     T,C = 8, 33
 
-    loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
-
-    for idx, batch in enumerate(loader):
-        print(idx)
-        if idx==100:
-            break
-        X, y = batch[0], batch[1]
-        X_flat = X.reshape(T*C, -1).T
-        y_flat = y.reshape(-1)
-        
-        imp, base = permutation_importance_batch(
-            model, X_flat, y_flat, metric,
-            T=T, C=C, H=H, W=W,
-            batch_size_features=16,
-            n_repeats=5
-        )
-        importances_sum += imp
-        baseline_sum += base
-
-
-    importances_avg = importances_sum / 100
-    baseline_avg = baseline_sum / 100
+    loader = DataLoader(test_dataset, batch_size=1, shuffle=True, num_workers=0)
     
-    print("Baseline MSE:", baseline_avg)
-    print("Permutation importances shape:", importances_avg.shape)
+    all_importances = []   # (N_images, T*C)
+    all_baselines = []
 
-    # ------------------------------
-    # VISUALISATION TRIÉE
-    # ------------------------------
-    feature_labels = [f"{input_vars[c]}_{(7-t)*6}h" for t in range(time_steps) for c in range(n_channels)]
-    sorted_idx = np.argsort(importances_avg)[::-1]  # décroissant
-    importances_sorted = importances_avg[sorted_idx]
-    feature_labels_sorted = [feature_labels[i] for i in sorted_idx]
+    # for idx, batch in enumerate(loader):
+    #     print(idx)
+    #     if idx == 100:
+    #     # if idx==2:
+    #         break
+
+    #     X, y = batch[0], batch[1]
+    #     X_flat = X.reshape(T*C, -1).T
+    #     y_flat = y.reshape(-1)
+
+    #     imp, base = permutation_importance_batch(
+    #         model, X_flat, y_flat, metric,
+    #         T=T, C=C, H=H, W=W,
+    #         batch_size_features=16,
+    #         n_repeats=5
+    #     )
+
+    #     all_importances.append(imp)
+    #     all_baselines.append(base)
+
+    # all_importances = np.stack(all_importances)   # shape = (N, T*C)
+    # all_baselines = np.array(all_baselines)
     
-    np.savez(
-        "permutation_importance.npz",
-        importances_sorted=importances_sorted,
-        feature_labels_sorted=np.array(feature_labels_sorted),
-        sorted_idx=sorted_idx,
+    # np.savez(
+    #     "features_importance/permutation_importances_to_stack_time_and_var.npz",
+    #     importances_sorted=all_importances
+    # )
+    
+    data = np.load("features_importance/permutation_importances_to_stack_time_and_var.npz", allow_pickle=True)
+    all_importances = data["importances_sorted"]
+
+    N = all_importances.shape[0]
+    imp_tc = all_importances.reshape(N, T, C)
+    imp_var = imp_tc.mean(axis=1)   # (N, C)
+    
+    mean_var = imp_var.mean(axis=0)
+    std_var  = imp_var.std(axis=0)
+
+    labels_var = input_vars
+    
+    save_barplot_mean_std(
+        mean_var,
+        std_var,
+        labels_var,
+        "figures/importance_per_variable.png",
+        title="Permutation importance — aggregated per variable",
+        top_k=15
     )
-    
-    # data = np.load("permutation_importance.npz", allow_pickle=True)
-    # importances_sorted = data["importances_sorted"]
-    # feature_labels_sorted = data["feature_labels_sorted"]
 
-    plt.figure(figsize=(12, 25))
-    plt.barh(range(n_features), importances_sorted)
-    plt.yticks(range(n_features), feature_labels_sorted, fontsize=6)
-    plt.gca().invert_yaxis()  # mettre les plus importantes en haut
-    plt.xlabel("ΔMSE after permutation")
-    plt.ylabel("Feature")
-    plt.title("Permutation Importance per feature")
-    plt.tight_layout()
-    plt.savefig("permutation_importance_sorted.png")
+    imp_time = imp_tc.mean(axis=2)   # (N, T)
+
+    mean_time = imp_time.mean(axis=0)
+    std_time  = imp_time.std(axis=0)
+    time_labels = [f"{(T-1-t)*6}h" for t in range(T)]
+
+    time_labels = ["t-42h", "t-36h", "t-30h", "t-24h", "t-18h", "t-12h", "t-6h", "t"]
+
+    save_lineplot_mean_std(
+        mean_time,
+        std_time,
+        "figures/importance_per_time.png",
+        title="Permutation importance — aggregated per timestep",
+        xlabel="Time",
+        ylabel="ΔMSE",
+        xtick_labels=time_labels
+    )
+

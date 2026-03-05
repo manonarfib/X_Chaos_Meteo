@@ -68,6 +68,8 @@ INPUT_VARS = [
     "vv1000", "vv925", "vv700", "vv500",
 ]
 
+# lsm, gopotential at surface, soil type manquants
+
 TARGET_VAR = "tp_6h"
 
 

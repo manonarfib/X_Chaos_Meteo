@@ -140,7 +140,6 @@ ax1 = fig.add_subplot(1, 3, 2, projection=proj)
 ax2 = fig.add_subplot(1, 3, 3, projection=proj)
 axes = [ax0, ax1, ax2]
 
-# --- Fond carte Europe (copié de ton code) ---
 for ax in axes:
     ax.set_extent(extent, crs=proj)
     ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=0.6, edgecolor='gray')

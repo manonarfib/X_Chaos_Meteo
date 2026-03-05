@@ -12,30 +12,60 @@ from models.unet.model_without_collapse import WFUNet_with_train
 
 import torch
 
+MODEL_TYPE = "unet" 
+LEAD=1
+T=8
+BATCH_SIZE=16
+DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
+MAX_LEAD=1
+CKPT_PATH="checkpoints/run_144946/best_checkpoint_epoch3_batch_idx5399.pt"
+
+WITHOUT_PRECIP=False
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device:", device)
 
-dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
-T, lead = 8, 1
-batch_size = 8
+# dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
+# T, lead = 8, 1
+# batch_size = 8
+without_precip=False
+# max_lead = 8
 
-dataset = ERA5Dataset(dataset_path, T=T, lead=lead)    
-test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+dataset = ERA5Dataset(DATASET_PATH, T=T, lead=LEAD, without_precip=without_precip, max_lead=MAX_LEAD)    
+test_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
 input_vars = list(dataset.X.coords["channel"].values)
 C_in = len(input_vars)
 
-# model = PrecipConvLSTM(
-#     input_channels=C_in,
-#     hidden_channels=[32, 64],
-#     kernel_size=3,
-# ).to(device)
-model = WFUNet_with_train(T, 149, 221, C_in, 1, 8, 32, 0).to(device)
 
-ckpt_path = "checkpoints/run_141848/best_checkpoint_epoch3_batch_idx6479.pt" #"checkpoints/run_141807/best_checkpoint_epoch2_batch_idx5399.pt"
-ckpt = torch.load(ckpt_path, map_location=device)
+def build_model(model_type: str, C_in: int, device: torch.device, max_lead) -> torch.nn.Module:
+    model_type = model_type.lower().strip()
+    if model_type == "convlstm":
+        model = PrecipConvLSTM(
+            input_channels=C_in,
+            hidden_channels=[32, 64],
+            kernel_size=3,
+            output_size=MAX_LEAD
+        ).to(device)
+        return model
+    elif model_type == "unet":
+        # signature in your commented line: WFUNet_with_train(8,149,221,33,1, 8,32,0)
+        # If you change T/H/W/C_in etc., update these args accordingly.
+        model = WFUNet_with_train(T, 149, 221, C_in, max_lead, 8, 32, 0).to(device)
+        return model
+    else:
+        raise ValueError(f"Unknown MODEL_TYPE='{model_type}'. Use 'convlstm' or 'unet'.")
+
+
+model = build_model(MODEL_TYPE, C_in, device, MAX_LEAD)
+
+# ckpt_path = "checkpoints_input_all_lead/epoch3_full.pt"
+# ckpt_path = "epoch3_full.pt"
+# ckpt_path = "checkpoints_advanced_torrential/epoch3_full.pt"
+# ckpt_path = "checkpoints_input_wout_precip/best_checkpoint_epoch3_batch3275.pt"
+ckpt = torch.load(CKPT_PATH, map_location=device)
 model.load_state_dict(ckpt["model_state_dict"])
 model.eval()
-print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {ckpt_path}")
+print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {CKPT_PATH}")
 
 # Metrics accumulators
 mse_sum = 0.0
@@ -51,12 +81,19 @@ tn_tot = {th: 0 for th in thresholds}
 print(len(test_loader))
 with torch.no_grad():
     for X_batch, y_batch, i in test_loader:
-        print(f"days {i[0]} to {(i[-1]+1)/4} computed")
-        X_batch = X_batch.to(device).float()
-        y_batch = y_batch.to(device).float()
-        
-        y_hat = model(X_batch).squeeze(1)  # (B,H,W)
-        y_hat = torch.clamp(y_hat, min=0.0)
+        print(f"days {i[0]/4} to {(i[-1]+1)/4} computed (out of {726})")
+        if MAX_LEAD==1:
+            X_batch = X_batch.to(device).float()
+            y_batch = y_batch.to(device).float()
+            
+            y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+            y_hat = torch.clamp(y_hat, min=0.0)
+        else:
+            X_batch = X_batch.to(device).float()
+            y_batch = y_batch[:, -1, :, :].to(device).float() # sélectionne le temps 48h
+            y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+            y_hat = y_hat[:, -1, :, :]
+            y_hat = torch.clamp(y_hat, min=0.0)
         
         # MSE & MAE
         mse_sum += nn.MSELoss(reduction='sum')(y_hat, y_batch).item()
@@ -78,43 +115,22 @@ mae = mae_sum / num_pixels
 
 # Global CSI
 csi_global = {}
-eps = 1e-8
-for th in thresholds:
-    csi_global[th] = tp_tot[th] / (tp_tot[th] + fp_tot[th] + fn_tot[th] + eps)
-
-# Global Heidke Skill Score (HSS) (better when close to 1)
 hss_global = {}
-eps = 1e-8
-for th in thresholds:
-    a = tp_tot[th]
-    b = fn_tot[th]
-    c = fp_tot[th]
-    d = tn_tot[th]
-    hss_global[th] = 2*(a*d-b*c) / ((a+c)*(c+d)+(a+b)*(b+d) + eps)
-
-# Probability of Detection (POD) (better when close to 1)
 pod_global = {}
-eps = 1e-8
-for th in thresholds:
-    a = tp_tot[th]
-    b = fn_tot[th]
-    c = fp_tot[th]
-    d = tn_tot[th]
-    pod_global[th] = a/ (a+b + eps)
-
-
-# False Alarm Ratio (better when close to 0)
 far_global = {}
 eps = 1e-8
 for th in thresholds:
     a = tp_tot[th]
-    b = fn_tot[th]
-    c = fp_tot[th]
+    b = fp_tot[th]
+    c = fn_tot[th]
     d = tn_tot[th]
+    csi_global[th] = a / (a + b + c + eps)
+    hss_global[th] = 2*(a*d-b*c) / ((a+c)*(c+d)+(a+b)*(b+d) + eps)
+    pod_global[th] = a/ (a+c + eps)
     far_global[th] = b / (a+b + eps)
 
 
-print(f"Test set metrics - MSE: {mse:.6f} | MAE: {mae:.6f}")
+print(f"Validation set metrics - MSE: {mse:.6f} | MAE: {mae:.6f}")
 for th, csi in csi_global.items():
     print(f"CSI @ {th} mm: {csi:.6f}")
 for th, hss in hss_global.items():
@@ -124,11 +140,22 @@ for th, pod in pod_global.items():
 for th, far in far_global.items():
     print(f"FAR @ {th} mm: {far:.6f}")
 
-# Résultats du ConvLSTM de base (MSE, tp_6h in, prévisions à 6h) :
-# Test set metrics - MSE: 0.756467 | MAE: 0.336837
-# CSI @ 0.1 mm: 0.681179
-# CSI @ 1.0 mm: 0.587248
-# CSI @ 5.0 mm: 0.398580
-# CSI @ 10.0 mm: 0.264549
 
-
+# Advanced Torrential Loss :
+# Validation set metrics - MSE: 1.116730 | MAE: 0.364156
+# CSI @ 0.1 mm: 0.551319
+# CSI @ 1.0 mm: 0.577553
+# CSI @ 5.0 mm: 0.006050
+# CSI @ 10.0 mm: 0.000000
+# HSS @ 0.1 mm: 0.560819
+# HSS @ 1.0 mm: 0.684876
+# HSS @ 5.0 mm: 0.011752
+# HSS @ 10.0 mm: 0.000000
+# POD @ 0.1 mm: 0.615849
+# POD @ 1.0 mm: 0.758479
+# POD @ 5.0 mm: 0.006051
+# POD @ 10.0 mm: 0.000000
+# FAR @ 0.1 mm: 0.159704
+# FAR @ 1.0 mm: 0.292293
+# FAR @ 5.0 mm: 0.010339
+# FAR @ 10.0 mm: 0.000000
