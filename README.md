@@ -106,3 +106,13 @@ This repository was created and equally contributed to by :
 ## ⭐ Acknowledgment
 
 A huge thank you to Florestan Fontaine from HeadMind Partners for his help and valuable advice.
+
+## 📄 License
+
+This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0).
+
+You are permitted to use, share, and adapt the material for non-commercial purposes, provided that appropriate credit is given to the original authors.
+
+Commercial use of this work is strictly prohibited without prior written permission from the authors.
+
+For full license terms, see: https://creativecommons.org/licenses/by-nc/4.0/
