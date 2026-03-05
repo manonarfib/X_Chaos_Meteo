@@ -90,6 +90,13 @@ The notebook `era5_visuals/visuels_era5.ipynb` allows you to
 ### 🔬 Explaining a pretrained model
 
 
+### 🖥️ Demonstrator
+
+You can  access a streamlit demonstrator by running :
+
+It permits you to 
+
+Mettre une vidéo du démonstrateur.
 
 
 ## 🤝 Authors

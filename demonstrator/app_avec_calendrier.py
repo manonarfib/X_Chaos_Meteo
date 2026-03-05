@@ -332,29 +332,88 @@ def splash_screen():
 # =====================================================
 
 def page_home():
-    st.title("Démonstrateur du Projet XChaos : Explicabilité de Prévisions Météorologiques")
+    st.title("Démonstrateur du Projet XChaos : Explicabilité d'un Système Chaotique - Prévisions Météorologiques 🌧️")
+    
+    # Bannière centrale (GIF)
+    # st.markdown(
+    #     """
+    #     <div style="text-align:center;">
+    #         <img src="era5_visuals/figures/gifs/alex_europe.gif" width="500">
+    #     </div>
+    #     """,
+    #     unsafe_allow_html=True
+    # )
+
+    st.markdown("---")
+
+    # Section Aperçu
+    st.header("💡 Aperçu")
     st.markdown(
         """
-        ## Objectifs du projet
-        Démonstrateur de modèles deep learning pour la prévision de précipitations à partir de données ERA5.
-
-        ## Fonctionnalités
-        - Choix du modèle
-        - Choix des paramètres temporels
-        - Inférence à la demande
-        - Visualisation interactive avec zoom
-        - Inspection des pixels par survol
-
-        ## Modèles
-        - ConvLSTM
-        - (UNet — à intégrer)
-
-        ## Auteurs
-        Louisa Arfib — Manon Arfib — Nathan Morin
-        
-        ## Rmerciements
+        Ce démonstrateur vous permet d'explorer des modèles de deep learning pour la prévision des précipitations en Europe
+        sur un horizon de 6 heures à partir des données ERA5.  
+        Vous pouvez également analyser **l'explicabilité des modèles**.
         """
     )
+
+    # Section Fonctionnalités avec colonnes
+    st.header("⚙️ Fonctionnalités")
+    col1, col2 = st.columns(2)
+    col1.markdown("""
+    - Choix du modèle (ConvLSTM / U-Net)  
+    - Sélection des paramètres temporels  
+    - Lancer l'inférence à la demande
+    """)
+    col2.markdown("""
+    - Zoom et survol des pixels  (TO DO)
+    - Visualisation de l'influence des variables d'entrée  (TO DO)
+    - Autre explicabilité (TO DO)
+    """)
+ 
+
+    st.markdown("---")
+
+    # Section Modèles
+    st.header("⚙️ Modèles")
+    st.subheader("ConvLSTM")
+    st.markdown(
+        """
+        Le réseau **ConvLSTM** est particulièrement adapté à la prévision spatio-temporelle.  
+        Il combine des convolutions spatiales avec des cellules LSTM pour capturer à la fois les dépendances 
+        temporelles et spatiales des précipitations.
+        """
+    )
+
+    st.subheader("U-Net 3D")
+    st.markdown(
+        """
+        Le réseau **U-Net 3D** implémenté est une architecture classique en U adaptée au cas de la prévision des précipitations :  
+        - Toutes les variables météorologiques passées (33 canaux) sont traitées simultanément.  
+        - Les skip connections conservent l'information temporelle complète, contrairement aux travaux de Kaparakis et al.  
+        - La dernière couche est une convolution 3D qui réduit la dimension temporelle pour prédire un pas unique (t+6h).  
+
+        Les convolutions utilisées sont des **Conv3D** avec un padding qui conserve la taille d'entrée. 
+        """
+    )
+
+    st.markdown("---")
+
+    # Section Auteurs et remerciements
+    st.header("🤝 Auteurs & Remerciements")
+    st.markdown(
+        """
+        **Louisa Arfib** — [GitHub](https://github.com/arfiblouisa)  
+        **Manon Arfib** — [GitHub](https://github.com/manonarfib)  
+        **Nathan Morin** — [GitHub](https://github.com/Nathan9842)  
+
+        Un grand merci à **Florestan Fontaine** de HeadMind Partners pour ses conseils et son accompagnement.
+        """
+    )
+    
+    # Bouton pour aller directement à la page d'inférence
+    if st.button("▶ Aller à l'inférence"):
+        st.session_state.page = "Inférence"
+        st.rerun()
 
 
 def page_inference():
@@ -618,13 +677,23 @@ def main():
         st.stop()
 
     clear_page_bg()
-    
-    page = st.sidebar.selectbox(
+
+    # récupérer page depuis session_state ou fallback sur sidebar
+    if "page" not in st.session_state:
+        st.session_state.page = "Accueil"
+
+    # Affichage du sidebar
+    page_sidebar = st.sidebar.selectbox(
         "Navigation",
-        ["Accueil", "Inférence"]
+        ["Accueil", "Inférence"],
+        index=0 if st.session_state.page == "Accueil" else 1
     )
 
-    if page == "Accueil":
+    # mettre à jour session_state si sidebar change
+    st.session_state.page = page_sidebar
+
+    # afficher la page
+    if st.session_state.page == "Accueil":
         page_home()
     else:
         page_inference()
