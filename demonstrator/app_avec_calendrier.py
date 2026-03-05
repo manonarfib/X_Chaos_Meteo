@@ -6,12 +6,15 @@ import torch
 import torch.nn as nn
 import streamlit as st
 import plotly.express as px
+import io
+from PIL import Image
 
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
+from models.unet.model_without_collapse import WFUNet_with_train
 
 # =====================================================
 # Utils
@@ -76,34 +79,6 @@ def get_index_from_datetime(times, selected_datetime):
         return None
     return int(idx[0])
 
-# def build_target_index(times, T, lead_hours):
-#     times = np.array(times).astype('datetime64[h]')
-#     py_datetimes = times.astype(object)
-
-#     target_to_index = {}
-
-#     for t0_idx in range(len(times)):
-
-#         t0 = times[t0_idx]
-
-#         # vérifier qu'on a assez de données pour l'input
-#         if t0_idx + T + lead_hours -1 > len(times):
-#             break
-
-#         target_time = t0 + np.timedelta64((T+lead_hours-1)*6, 'h')
-
-#         # trouver cet instant dans le dataset
-#         matches = np.where(times == target_time)[0]
-
-#         if len(matches) == 0:
-#             continue
-
-#         target_idx = matches[0]
-#         target_dt = py_datetimes[target_idx]
-
-#         target_to_index[target_dt] = t0_idx
-
-#     return target_to_index
 
 def build_target_index(times, T, lead):
     target_to_index = {}
@@ -243,6 +218,106 @@ def plot_clean_map(arr: np.ndarray, title: str,
     return fig
 
 
+import plotly.graph_objects as go
+
+def plot_interactive_map_true(
+    arr,
+    title,
+    lon_min=-12.5, lon_max=42.5,
+    lat_min=35, lat_max=72,
+    zmin=None, zmax=None
+):
+
+    H, W = arr.shape
+
+    lons = np.linspace(lon_min, lon_max, W)
+    lats = np.linspace(lat_min, lat_max, H)
+
+    lon_grid, lat_grid = np.meshgrid(lons, lats)
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Heatmap(
+        z=arr,
+        x=lons,
+        y=lats,
+        colorscale="Blues",
+        zmin=zmin,
+        zmax=zmax,
+        colorbar=dict(title="mm"),
+        hovertemplate="Lat: %{y:.2f}<br>Lon: %{x:.2f}<br>Value: %{z:.3f}<extra></extra>"
+    ))
+
+    fig.update_layout(
+        title=title,
+        mapbox=dict(
+            style="carto-positron",  # 🔥 fond de carte Europe propre
+        ),
+        xaxis_title="Longitude",
+        yaxis_title="Latitude",
+        margin=dict(l=0, r=0, t=40, b=0)
+    )
+
+    return fig
+
+def plot_interactive_map(arr: np.ndarray,
+                                        title: str,
+                                        lon_min=-12.5, lon_max=42.5,
+                                        lat_min=35, lat_max=72,
+                                        cmap="Blues",
+                                        alpha=0.6,
+                                        zmin=None, zmax=None):
+    """
+    Retourne une figure Plotly interactive avec :
+    - fond Cartopy (dessin Europe)
+    - raster ERA5 overlay
+    - axes normés
+    """
+    # 1️⃣ Générer une image matplotlib avec Cartopy
+    H, W = arr.shape
+    fig = plt.figure(figsize=(10,8))
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
+
+    # Fond “dessin” Europe
+    ax.add_feature(cfeature.LAND.with_scale('50m'), facecolor='lightgray')
+    ax.add_feature(cfeature.COASTLINE.with_scale('50m'))
+    ax.add_feature(cfeature.BORDERS.with_scale('50m'), linestyle=':')
+
+    # Overlay ERA5
+    img = ax.imshow(arr, origin='lower', extent=[lon_min, lon_max, lat_min, lat_max],
+                    cmap=cmap, alpha=alpha, vmin=zmin, vmax=zmax)
+
+    # ax.set_title(title)
+    ax.axis('off')
+
+    # Sauvegarder la figure en mémoire
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+    plt.close(fig)
+    buf.seek(0)
+    pil_img = Image.open(buf)
+
+    # Convertir en numpy array
+    img_array = np.array(pil_img)
+
+    # 2️⃣ Créer figure Plotly interactive
+    lons = np.linspace(lon_min, lon_max, W)
+    lats = np.linspace(lat_min, lat_max, H)
+
+    fig_plotly = go.Figure()
+
+    fig_plotly.add_trace(go.Image(z=img_array))
+
+    # Activer hover avec coordonnées approximatives
+    fig_plotly.update_layout(
+        title=title,
+        margin=dict(l=0, r=0, t=40, b=0),
+        dragmode="zoom",
+        clickmode="event+select"
+    )
+
+    return fig_plotly
 
 # =====================================================
 # Background helpers
@@ -555,7 +630,7 @@ def page_inference():
     run = st.button("Lancer l'inférence")
 
     if run:
-        # st.success("Inférence en cours...")
+        st.success("Inférence en cours...")
 
         try:
             with st.spinner("Chargement du modèle..."):
@@ -615,7 +690,7 @@ def page_inference():
 
     # ---------------- Display ----------------
     if not st.session_state.get("has_prediction", False):
-        st.info("Clique sur 'Run inference' pour générer une prédiction.")
+        st.info("Clique sur 'Lancer l'inférence' pour générer une prédiction.")
         return
 
     y_true_seq = st.session_state.y_true_seq
@@ -659,9 +734,18 @@ def page_inference():
     vmax_pred = np.max(y_pred_seq)
 
     with tab1:
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
+        # col1, col2, col3 = st.columns([1, 2, 1])
+        # with col2:
+            # st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
+        st.plotly_chart(
+            plot_interactive_map(
+                y_pred_step,
+                "Prédiction",
+                zmin=vmin_pred,
+                zmax=vmax_pred
+            ),
+            # width='stretch'
+        )
 
     with tab2:
         col1, col2, col3 = st.columns([1, 2, 1])
