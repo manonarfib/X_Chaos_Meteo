@@ -16,13 +16,17 @@ from models.unet.model_without_collapse import WFUNet_with_train
 # ============================================================
 # USER CONFIG
 # ============================================================
-MODEL_TYPE = "convlstm"  # "convlstm" or "unet"
+MODEL_TYPE = "unet"  # "convlstm" or "unet"
 
+# CKPT_PATHS = {
+#     "MSE": "checkpoints/convlstm/mse/epoch3_full.pt",
+#     "W_MSE": "checkpoints/convlstm/w_mse/epoch3_full.pt",
+#     "MSE+W_DICE": "checkpoints/convlstm/mse_and_w_dice/epoch3_full.pt",
+#     "ADV_TORRENTIAL": "checkpoints/convlstm/advanced_torrential/epoch3_full.pt",
+# }
 CKPT_PATHS = {
-    "MSE": "checkpoints/convlstm/mse/epoch3_full.pt",
-    "W_MSE": "checkpoints/convlstm/w_mse/epoch3_full.pt",
-    "MSE+W_DICE": "checkpoints/convlstm/mse_and_w_dice/epoch3_full.pt",
-    "ADV_TORRENTIAL": "checkpoints/convlstm/advanced_torrential/epoch3_full.pt",
+    "MSE": "checkpoints/run_144949/best_checkpoint_epoch5_batch_idx6479.pt",
+    "W_MSE": "checkpoints/run_148318/best_checkpoint_epoch4_batch_idx1439.pt",
 }
 
 LEAD = 1  # lead in 6h steps -> prediction at t_lead = LEAD*6 hours
