@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 from models.utils.ERA5_dataset_from_local import  ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
+from models.unet.model_without_collapse import WFUNet_with_train
 
 class PixelModel(nn.Module):
     def __init__(self, base_model, i, j):
@@ -21,7 +22,23 @@ class PixelModel(nn.Module):
         """
         y = self.base_model(x)          # (B, 1, H, W)
         return y[:, 0, self.i, self.j].unsqueeze(1)  # scalaire par batch
-    
+
+def build_model(model_type: str, C_in: int, device: torch.device) -> torch.nn.Module:
+    model_type = model_type.lower().strip()
+    if model_type == "convlstm":
+        model = PrecipConvLSTM(
+            input_channels=C_in,
+            hidden_channels=[32, 64],
+            kernel_size=3
+        ).to(device)
+        return model
+    elif model_type == "unet":
+        # signature in your commented line: WFUNet_with_train(8,149,221,33,1, 8,32,0)
+        # If you change T/H/W/C_in etc., update these args accordingly.
+        model = WFUNet_with_train(T, 149, 221, C_in, 1, 8, 32, 0).to(device)
+        return model
+    else:
+        raise ValueError(f"Unknown MODEL_TYPE='{model_type}'. Use 'convlstm' or 'unet'.")   
 
 def integrated_gradients(model, x, baseline, steps=20):
     """
@@ -68,13 +85,10 @@ if __name__=="__main__":
     input_vars = list(dataset_test.X.coords["channel"].values)
     C_in = len(input_vars)
 
-    model = PrecipConvLSTM(
-        input_channels=C_in,
-        hidden_channels=[32, 64],
-        kernel_size=3,
-    ).to(device)
+    MODEL_TYPE = "unet" 
+    model = build_model(MODEL_TYPE, C_in, device)
 
-    ckpt_path = "explainability/epoch3_full.pt"
+    ckpt_path = "checkpoints/run_144949/best_checkpoint_epoch5_batch_idx6479.pt"
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {ckpt_path}")
@@ -105,7 +119,7 @@ if __name__=="__main__":
     ig = integrated_gradients(pixel_model, X_cpu, baseline, steps=50)
     print("Integrated Gradients computed, shape:", ig.shape)
 
-    out_dir = "explainability/ig_maps"
+    out_dir = "explainability/ig_maps/UNet"
     os.makedirs(out_dir, exist_ok=True)
 
     ig_np = ig[0].numpy()  # (T, C, H, W)
