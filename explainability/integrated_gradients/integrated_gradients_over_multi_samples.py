@@ -91,7 +91,6 @@ def _apply_mask(arr2d: np.ndarray, mask2d: np.ndarray) -> np.ndarray:
     out[~mask2d.astype(bool)] = np.nan
     return out
 
-
 def save_barplot(values, labels, out_path, title="", top_k=15):
     values = np.asarray(values)
     idx = np.argsort(-values)[:top_k]
@@ -114,7 +113,7 @@ def save_barplot(values, labels, out_path, title="", top_k=15):
 def save_lineplot(values, out_path, title="", xlabel="t index (0..T-1)", ylabel="Importance (sum abs attribution)"):
     values = np.asarray(values)
     T = len(values)
-    t_ref = T - 1  # on suppose que le dernier index correspond à 't' (comme ton t_view=7 quand T=8)
+    t_ref = T - 1 
     hours = -TIME_STEP_HOURS * (t_ref - np.arange(T))  # [-42, -36, ..., -6, 0] si T=8
 
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -618,7 +617,7 @@ def main():
     lead_str = lead_to_str(LEAD)
     model_tag = model_type
     loss_tag = LOSS_NAME.lower()
-    out_dir = f"explainability/ig_outputs/model_{model_tag}/{loss_tag}_{lead_str}"
+    out_dir = f"explainability/integrated gradients/ig_outputs/model_{model_tag}/{loss_tag}_{lead_str}"
     os.makedirs(out_dir, exist_ok=True)
     print("[OUT_DIR]", out_dir)
 
@@ -654,7 +653,7 @@ def main():
             labels=input_vars,
             out_path=os.path.join(agg_dir, "var_importance_mean_std.png"),
             title=f"{METHOD.upper()} variable importance (mean ± std over {len(chosen_idx)} samples)\nmodel={model_tag} loss={LOSS_NAME} lead={lead_str}",
-            top_k=20,
+            top_k=33,
         )
         save_lineplot(
             t_mean,
