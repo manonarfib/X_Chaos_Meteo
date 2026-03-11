@@ -218,6 +218,24 @@ def plot_clean_map(arr: np.ndarray, title: str,
 
     return fig
 
+def plot_image(arr: np.ndarray, title: str):
+
+    fig = plt.figure()
+    ax = plt.axes()
+    img = ax.imshow(
+        arr,
+        origin='lower',
+        extent=[lon_min, lon_max, lat_min, lat_max],
+        cmap=cmap,
+        alpha=0.8,
+        aspect='auto',
+        vmin=vmin,
+        vmax=vmax
+    )
+    
+
+    return fig
+
 
 import plotly.graph_objects as go
 
@@ -608,7 +626,7 @@ def page_inference():
     else:
         st.info("Pour lead_time = 8, seul ConvLSTM est disponible")
         ckpt_choice = "ConvLSTM"
-    
+    st.session_state.model = ckpt_choice
     # ckpt_choice = st.radio("Modèle", ["convlstm", "unet"])
 
     ckpt_paths = {
@@ -626,9 +644,11 @@ def page_inference():
 
     # ---------------- Load dataset (UNE FOIS) ----------------
     T = 8
+    st.session_state.T = T
     
     dataset, input_vars, times = load_dataset(dataset_path, T, lead)
     C_in = len(input_vars)
+    st.session_state.times = times
 
     # ---------------- Datetime selection ----------------
     st.subheader("Sélection de la date à laquelle prédire les précipitations :")
@@ -735,6 +755,8 @@ def page_inference():
         st.session_state.y_pred_seq = y_pred
         st.session_state.has_prediction = True
 
+        st.session_state.inference_done = True
+
     # ---------------- Display ----------------
     if not st.session_state.get("has_prediction", False):
         st.info("Clique sur 'Lancer l'inférence' pour générer une prédiction.")
@@ -762,6 +784,8 @@ def page_inference():
         )
     else:
         step = 0
+
+    st.session_state.step = step
     
     y_pred_step = y_pred_seq[step]
     y_true_step = y_true_seq[step]
@@ -781,9 +805,9 @@ def page_inference():
     vmax_pred = np.max(y_pred_seq)
 
     with tab1:
-        # col1, col2, col3 = st.columns([1, 2, 1])
-        # with col2:
-            # st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
         # st.plotly_chart(
         #     plot_interactive_map(
         #         y_pred_step,
@@ -794,14 +818,14 @@ def page_inference():
             # width='stretch'
         # )
         
-        # st.plotly_chart(plot_interactive_map(
+        # st.plotly_chart(plot_interactive_map_true(
         #         y_pred_step,
         #         "Prédiction",
         #         zmin=vmin_pred,
         #         zmax=vmax_pred
         #     ))
         
-        display_interactive_map_fixed(y_pred_step, "Prediction", key="pred_map")
+        # display_interactive_map_fixed(y_pred_step, "Prediction", key="pred_map")
 
     with tab2:
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -813,19 +837,136 @@ def page_inference():
         with col2:
             st.pyplot(plot_clean_map(err, "Error", cmap="Reds", figsize=(5,4), vmin=vmin_true, vmax=vmax_true))
 
-def page_explicabilite():
-    lat, lon = st.session_state.get("clicked_pixel", (None, None))
-    if lat is None:
-        st.warning("Aucun pixel sélectionné")
+    # Bouton pour aller directement à la page d'explicabilité locale
+    if st.button("▶ Comprendre cette prédiction"):
+        st.session_state.page = "Explicabilité Locale"
+        st.rerun()
+
+def page_explicabilite_locale():
+    st.header("Explicabilité locale : comprendre une prédiction")
+
+    inference_done = st.session_state.get("inference_done", None)
+    if inference_done is None:
+        st.warning("Aucun prédiction à expliquer. Veuillez lancer une inférence avant de vous rendre sur la page Explicabilité Locale.")
         return
 
-    st.header(f"Explicabilité du pixel Lat={lat:.2f}, Lon={lon:.2f}")
+    times = st.session_state.times
+    time_predicted = times[st.session_state.sample_idx + st.session_state.T + st.session_state.step]
+    st.markdown(
+        f"""La prédiction suivante est expliquée :  
+    **Modèle :** {st.session_state.model}  
+    **Date :** {st.session_state.selected_dt}
+    """
+    )
 
-    # 🔹 Ici tu peux afficher :
-    # - heatmap d'importance par variable
-    # - contribution des canaux
-    # - etc.
-    st.write("Visualisation explicabilité à implémenter")
+    st.subheader("Importance du temps et des variables pour la prédiction de cet échantillon.")
+
+    tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+    app_dir = os.path.dirname(__file__)
+
+    with tab1:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            st.pyplot(plot_clean_map(y_true_step, "Truth", figsize=(5,4), vmin=vmin_true, vmax=vmax_true))
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_ig_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance des variables pour cette prédiction")
+
+    with tab2:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_fp_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance temporelle pour le ConvLSTM")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_fp_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance des variables pour le ConvLSTM")
+
+
+    st.subheader("Focus de les integrated gradients pour chacune des variables.")
+
+    # Mettre un bouton choix pour choisir parmi les 33 variables. Je veux qu'elles soient rangées dans l'or
+
+    st.write("Regarde l'évolution de cette variable")
+
+
+def page_explicabilite_globale():
+    st.title("Explicabilité globale des modèles de prévision")
+    # lat, lon = st.session_state.get("clicked_pixel", (None, None))
+    # if lat is None:
+    #     st.warning("Aucun pixel sélectionné")
+    #     return
+
+    # st.header(f"Explicabilité du pixel Lat={lat:.2f}, Lon={lon:.2f}")
+
+    # st.write("Visualisation explicabilité à implémenter")
+
+    st.markdown("""Une analyse des modèles implémentés a été réalisée, afin de pouvoir les expliquer.
+    Nous avons mis en place plusieurs méthodes d'explicabilité globale :  
+    - étude de l'importance des variables (par feature permutation et integrated gradients)  
+    -  
+    Une présentation des résultats obtenus est dans cette page.""")
+
+    st.header("Importance des variables")
+
+    st.write("Décrire chacune des méthodes IG et Feature Permutation.")
+
+    st.subheader("Modèle ConvLSTM")
+
+    tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+    app_dir = os.path.dirname(__file__)
+
+    with tab1:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_ig_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance temporelle pour le ConvLSTM")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_ig_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance des variables pour le ConvLSTM")
+
+    with tab2:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_fp_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance temporelle pour le ConvLSTM")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_fp_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance des variables pour le ConvLSTM")
+
+
+    st.subheader("Modèle U-Net")
+
+    tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+
+    with tab1:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_ig_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance temporelle pour le U-Net")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_ig_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance des variables pour le U-Net")
+
+    with tab2:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_fp_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance temporelle pour le U-Net")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_fp_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance des variables pour le U-Net")
+
 
 # =====================================================
 # Main
@@ -846,8 +987,8 @@ def main():
     # Affichage du sidebar
     page_sidebar = st.sidebar.selectbox(
         "Navigation",
-        ["Accueil", "Inférence", "Explicabilité"],
-        index=["Accueil", "Inférence", "Explicabilité"].index(st.session_state.page)
+        ["Accueil", "Inférence", "Explicabilité Locale", "Explicabilité Globale"],
+        index=["Accueil", "Inférence", "Explicabilité Locale", "Explicabilité Globale"].index(st.session_state.page)
     )
 
     # mettre à jour session_state seulement si l'utilisateur a changé le selectbox
@@ -858,8 +999,10 @@ def main():
         page_home()
     elif st.session_state.page == "Inférence":
         page_inference()
-    elif st.session_state.page == "Explicabilité":
-        page_explicabilite()
+    elif st.session_state.page == "Explicabilité Locale":
+        page_explicabilite_locale()
+    elif st.session_state.page == "Explicabilité Globale":
+        page_explicabilite_globale()
 
 
 if __name__ == "__main__":
