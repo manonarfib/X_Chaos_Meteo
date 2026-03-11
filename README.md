@@ -39,6 +39,10 @@ To get a local copy of this project up and running, follow these steps.
    pip install -r requirements.txt
    ```
 
+3. **Downloading UNet checkpoint**
+
+If you can, you should install the Git LFS extension (see [https://git-lfs.com/](https://git-lfs.com/)), which handles the versioning of large files. In that case, you only need to run ```git lfs install``` (you only need to run that once in your git ), and the checkpoint is automatically usable from ```checkpoints/unet```.
+However, if you can't install the extension (beware, it isn't installed on the DCE), you can clone the repository as usual, then go to [https://github.com/manonarfib/X_Chaos_Meteo/tree/main/checkpoints/unet](https://github.com/manonarfib/X_Chaos_Meteo/tree/main/checkpoints/unet), and manually download the checkpoint. Then you have to **rename** the file (we recommend to rename it ```best_mse_true.pt```), and drag and drop it in ```checkpoints/unet```.
 
 ## 📖 Usage
 
@@ -109,3 +113,13 @@ This repository was created and equally contributed to by :
 ## ⭐ Acknowledgment
 
 A huge thank you to Florestan Fontaine from HeadMind Partners for his help and valuable advice.
+
+## 📄 License
+
+This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0).
+
+You are permitted to use, share, and adapt the material for non-commercial purposes, provided that appropriate credit is given to the original authors.
+
+Commercial use of this work is strictly prohibited without prior written permission from the authors.
+
+For full license terms, see: https://creativecommons.org/licenses/by-nc/4.0/
