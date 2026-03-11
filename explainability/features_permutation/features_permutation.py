@@ -137,7 +137,14 @@ if __name__=="__main__":
     WITHOUT_PRECIP=False
     BATCH_SIZE=16
     DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
-    CKPT_PATH="checkpoints/unet/best_mse_true.pt"
+
+    if MODEL_TYPE=="unet":
+        CKPT_PATH="checkpoints/unet/best_mse_true.pt"
+    elif MODEL_TYPE=="convlstm":
+        CKPT_PATH="checkpoints/convlstm/mse/epoch3_full.pt"
+    else:
+        print("model type doesn't exist, it must be 'unet' or 'convlstm'")
+
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -217,9 +224,9 @@ if __name__=="__main__":
         mean_var,
         std_var,
         labels_var,
-        f"explainability/features_permutation/figures/importance_per_variable_{MODEL_TYPE}.png",
+        f"explainability/features_permutation/figures/importance_per_variable_{MODEL_TYPE}_new.png",
         title="Permutation importance — aggregated per variable",
-        top_k=15
+        top_k=20
     )
 
     imp_time = imp_tc.mean(axis=2)   # (N, T)
@@ -233,7 +240,7 @@ if __name__=="__main__":
     save_lineplot_mean_std(
         mean_time,
         std_time,
-        f"explainability/features_permutation/figures/importance_per_time_{MODEL_TYPE}.png",
+        f"explainability/features_permutation/figures/importance_per_time_{MODEL_TYPE}_new.png",
         title="Permutation importance — aggregated per timestep",
         xlabel="Time",
         ylabel="ΔMSE",
