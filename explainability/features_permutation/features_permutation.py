@@ -2,12 +2,14 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 from sklearn.metrics import mean_squared_error
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
+from models.utils.evaluate_model import build_model
 
 
-def reshape_for_convlstm(X_flat, B=1, T=8, C=33, H=149, W=221):
+def reshape_for_model(X_flat, B=1, T=8, C=33, H=149, W=221):
     """
     Transforme X_flat (pixels, features) en X_conv (B, T, C, H, W)
     """
@@ -28,7 +30,7 @@ def permutation_importance_batch(model, X_flat, y_flat, metric, T=8, C=33, H=149
     importances = np.zeros(n_features)
 
     # Convertir X_flat en torch 5D
-    X_5d = reshape_for_convlstm(X_flat).to(next(model.parameters()).device)
+    X_5d = reshape_for_model(X_flat).to(next(model.parameters()).device)
 
     # Baseline
     with torch.no_grad():
@@ -53,6 +55,7 @@ def permutation_importance_batch(model, X_flat, y_flat, metric, T=8, C=33, H=149
 
             with torch.no_grad():
                 y_pred_perm = model(X_perm_batch)
+                y_pred_perm = torch.clamp(y_pred_perm, min=0.0)
                 y_pred_perm = y_pred_perm.view(batch_feats, -1).cpu().numpy()
 
             for i, f in enumerate(range(start, end)):
@@ -63,7 +66,7 @@ def permutation_importance_batch(model, X_flat, y_flat, metric, T=8, C=33, H=149
 
     return importances, baseline
 
-import os
+
 def save_barplot_mean_std(mean_vals, std_vals, labels, out_path, title="", top_k=15): 
     mean_vals = np.asarray(mean_vals) 
     std_vals = np.asarray(std_vals) 
@@ -127,40 +130,40 @@ if __name__=="__main__":
     # ------------------------------
     # CONFIG
     # ------------------------------
-    train_dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_train.zarr"
-    test_dataset_path = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
-    checkpoint_path = "epoch3_full.pt"
+    MODEL_TYPE = "unet" 
+    LEAD=1
+    T=8
+    MAX_LEAD=1
+    WITHOUT_PRECIP=False
+    BATCH_SIZE=16
+    DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
+    CKPT_PATH="checkpoints/unet/best_mse_true.pt"
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # ------------------------------
     # DATASET
     # ------------------------------
-    train_dataset = ERA5Dataset(train_dataset_path, 8, 1)
-    test_dataset = ERA5Dataset(test_dataset_path, 8, 1)
-    batch = next(iter(DataLoader(test_dataset, batch_size=1, shuffle=True, num_workers=0)))
-    X, y = batch[0], batch[1]
-    batch, time_steps, n_channels, H, W = X.shape
-    n_features = time_steps * n_channels
-    n_samples = H * W
-    X_flat = X[0].reshape(time_steps * n_channels, -1).T
-    y_flat = y.reshape(-1)
+
+    test_dataset = ERA5Dataset(DATASET_PATH, T=T, lead=LEAD, without_precip=WITHOUT_PRECIP, max_lead=MAX_LEAD)    
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
+    input_vars = list(test_dataset.X.coords["channel"].values)
+    C_in = len(input_vars)
 
     # ------------------------------
-    # MODELE
+    # MODEL
     # ------------------------------
-    input_vars = list(train_dataset.X.coords["channel"].values)
-    model = PrecipConvLSTM(input_channels=len(input_vars), hidden_channels=[32, 64], kernel_size=3)
-    ckpt = torch.load(checkpoint_path, map_location=device)
+    model = build_model(MODEL_TYPE, C_in, T, device, max_lead=MAX_LEAD)
+    ckpt = torch.load(CKPT_PATH, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
-    model.to(device)
     model.eval()
+    print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {CKPT_PATH}")
 
     # ------------------------------
     # PERMUTATION IMPORTANCE
     # ------------------------------
     metric = mean_squared_error
     
-    importances_sum = np.zeros(n_features)
     baseline_sum = 0.0
     n_images = len(test_dataset)
     T,C = 8, 33
@@ -170,36 +173,36 @@ if __name__=="__main__":
     all_importances = []   # (N_images, T*C)
     all_baselines = []
 
-    # for idx, batch in enumerate(loader):
-    #     print(idx)
-    #     if idx == 100:
-    #     # if idx==2:
-    #         break
+    for idx, batch in enumerate(loader):
+        print(idx)
+        if idx == 100:
+            break
 
-    #     X, y = batch[0], batch[1]
-    #     X_flat = X.reshape(T*C, -1).T
-    #     y_flat = y.reshape(-1)
+        X, y = batch[0], batch[1]
+        _, _, _, H, W = X.shape
+        X_flat = X.reshape(T*C, -1).T
+        y_flat = y.reshape(-1)
 
-    #     imp, base = permutation_importance_batch(
-    #         model, X_flat, y_flat, metric,
-    #         T=T, C=C, H=H, W=W,
-    #         batch_size_features=16,
-    #         n_repeats=5
-    #     )
+        imp, base = permutation_importance_batch(
+            model, X_flat, y_flat, metric,
+            T=T, C=C, H=H, W=W,
+            batch_size_features=16,
+            n_repeats=5
+        )
 
-    #     all_importances.append(imp)
-    #     all_baselines.append(base)
+        all_importances.append(imp)
+        all_baselines.append(base)
 
-    # all_importances = np.stack(all_importances)   # shape = (N, T*C)
-    # all_baselines = np.array(all_baselines)
+    all_importances = np.stack(all_importances)   # shape = (N, T*C)
+    all_baselines = np.array(all_baselines)
     
-    # np.savez(
-    #     "features_importance/permutation_importances_to_stack_time_and_var.npz",
-    #     importances_sorted=all_importances
-    # )
+    np.savez(
+        f"explainability/features_permutation/permutation_importances_to_stack_time_and_var_{MODEL_TYPE}.npz",
+        importances_sorted=all_importances
+    )
     
-    data = np.load("features_importance/permutation_importances_to_stack_time_and_var.npz", allow_pickle=True)
-    all_importances = data["importances_sorted"]
+    # data = np.load(f"explainability/features_permutation/permutation_importances_to_stack_time_and_var_{MODEL_TYPE}.npz", allow_pickle=True)
+    # all_importances = data["importances_sorted"]
 
     N = all_importances.shape[0]
     imp_tc = all_importances.reshape(N, T, C)
@@ -214,7 +217,7 @@ if __name__=="__main__":
         mean_var,
         std_var,
         labels_var,
-        "figures/importance_per_variable.png",
+        f"explainability/features_permutation/figures/importance_per_variable_{MODEL_TYPE}.png",
         title="Permutation importance — aggregated per variable",
         top_k=15
     )
@@ -230,7 +233,7 @@ if __name__=="__main__":
     save_lineplot_mean_std(
         mean_time,
         std_time,
-        "figures/importance_per_time.png",
+        f"explainability/features_permutation/figures/importance_per_time_{MODEL_TYPE}.png",
         title="Permutation importance — aggregated per timestep",
         xlabel="Time",
         ylabel="ΔMSE",
