@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import streamlit as st
+from streamlit_plotly_events import plotly_events
 import plotly.express as px
 import io
 from PIL import Image
@@ -260,64 +261,110 @@ def plot_interactive_map_true(
 
     return fig
 
-def plot_interactive_map(arr: np.ndarray,
-                                        title: str,
-                                        lon_min=-12.5, lon_max=42.5,
-                                        lat_min=35, lat_max=72,
-                                        cmap="Blues",
-                                        alpha=0.6,
-                                        zmin=None, zmax=None):
-    """
-    Retourne une figure Plotly interactive avec :
-    - fond Cartopy (dessin Europe)
-    - raster ERA5 overlay
-    - axes normés
-    """
-    # 1️⃣ Générer une image matplotlib avec Cartopy
+# def plot_interactive_map(arr: np.ndarray,
+#                                         title: str,
+#                                         lon_min=-12.5, lon_max=42.5,
+#                                         lat_min=35, lat_max=72,
+#                                         cmap="Blues",
+#                                         alpha=0.6,
+#                                         zmin=None, zmax=None):
+#     """
+#     Retourne une figure Plotly interactive avec :
+#     - fond Cartopy (dessin Europe)
+#     - raster ERA5 overlay
+#     - axes normés
+#     """
+#     # 1️⃣ Générer une image matplotlib avec Cartopy
+#     H, W = arr.shape
+#     fig = plt.figure(figsize=(10,8))
+#     ax = plt.axes(projection=ccrs.PlateCarree())
+#     ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
+
+#     # Fond “dessin” Europe
+#     ax.add_feature(cfeature.LAND.with_scale('50m'), facecolor='lightgray')
+#     ax.add_feature(cfeature.COASTLINE.with_scale('50m'))
+#     ax.add_feature(cfeature.BORDERS.with_scale('50m'), linestyle=':')
+
+#     # Overlay ERA5
+#     img = ax.imshow(arr, origin='lower', extent=[lon_min, lon_max, lat_min, lat_max],
+#                     cmap=cmap, alpha=alpha, vmin=zmin, vmax=zmax)
+
+#     # ax.set_title(title)
+#     ax.axis('off')
+
+#     # Sauvegarder la figure en mémoire
+#     buf = io.BytesIO()
+#     plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+#     plt.close(fig)
+#     buf.seek(0)
+#     pil_img = Image.open(buf)
+
+#     # Convertir en numpy array
+#     img_array = np.array(pil_img)
+
+#     # 2️⃣ Créer figure Plotly interactive
+#     lons = np.linspace(lon_min, lon_max, W)
+#     lats = np.linspace(lat_min, lat_max, H)
+
+#     fig_plotly = go.Figure()
+
+#     fig_plotly.add_trace(go.Image(z=img_array))
+
+#     # Activer hover avec coordonnées approximatives
+#     fig_plotly.update_layout(
+#         title=title,
+#         margin=dict(l=0, r=0, t=40, b=0),
+#         dragmode="zoom",
+#         clickmode="event+select"
+#     )
+
+#     return fig_plotly
+
+
+def display_interactive_map_fixed(arr, title, lon_min=-12.5, lon_max=42.5,
+                                  lat_min=35, lat_max=72,
+                                  cmap="Blues", zmin=None, zmax=None,
+                                  width=600, height=600, key="era5_map"):
+
     H, W = arr.shape
-    fig = plt.figure(figsize=(10,8))
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
-
-    # Fond “dessin” Europe
-    ax.add_feature(cfeature.LAND.with_scale('50m'), facecolor='lightgray')
-    ax.add_feature(cfeature.COASTLINE.with_scale('50m'))
-    ax.add_feature(cfeature.BORDERS.with_scale('50m'), linestyle=':')
-
-    # Overlay ERA5
-    img = ax.imshow(arr, origin='lower', extent=[lon_min, lon_max, lat_min, lat_max],
-                    cmap=cmap, alpha=alpha, vmin=zmin, vmax=zmax)
-
-    # ax.set_title(title)
-    ax.axis('off')
-
-    # Sauvegarder la figure en mémoire
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-    plt.close(fig)
-    buf.seek(0)
-    pil_img = Image.open(buf)
-
-    # Convertir en numpy array
-    img_array = np.array(pil_img)
-
-    # 2️⃣ Créer figure Plotly interactive
     lons = np.linspace(lon_min, lon_max, W)
     lats = np.linspace(lat_min, lat_max, H)
 
-    fig_plotly = go.Figure()
+    fig = go.Figure(go.Heatmap(
+        z=arr,
+        x=lons,
+        y=lats,
+        colorscale=cmap,
+        zmin=zmin,
+        zmax=zmax,
+        colorbar=dict(title="mm"),
+        hovertemplate="Lat: %{y:.2f}<br>Lon: %{x:.2f}<br>Value: %{z:.2f}<extra></extra>"
+    ))
 
-    fig_plotly.add_trace(go.Image(z=img_array))
-
-    # Activer hover avec coordonnées approximatives
-    fig_plotly.update_layout(
+    fig.update_layout(
         title=title,
+        xaxis=dict(scaleanchor="y"),
+        width=width,
+        height=height,
         margin=dict(l=0, r=0, t=40, b=0),
         dragmode="zoom",
         clickmode="event+select"
     )
 
-    return fig_plotly
+    # 🔹 Affiche la figure et capture les clics
+    clicked = plotly_events(fig, click_event=True, hover_event=False, key=key)
+
+    # 🔹 Stocker le clic dans session_state (redirection gérée ailleurs)
+    if clicked:
+        lat_click = clicked[0]["y"]
+        lon_click = clicked[0]["x"]
+        st.session_state.clicked_pixel = (lat_click, lon_click)
+        st.session_state.has_clicked_pixel = True
+        st.success(f"Pixel cliqué : Lat={lat_click:.2f}, Lon={lon_click:.2f}")
+
+# 🔹 Redirection vers la page explicabilité
+if st.session_state.get("has_clicked_pixel", False):
+    st.session_state.page = "Explicabilité"
 
 # =====================================================
 # Background helpers
@@ -737,15 +784,24 @@ def page_inference():
         # col1, col2, col3 = st.columns([1, 2, 1])
         # with col2:
             # st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
-        st.plotly_chart(
-            plot_interactive_map(
-                y_pred_step,
-                "Prédiction",
-                zmin=vmin_pred,
-                zmax=vmax_pred
-            ),
+        # st.plotly_chart(
+        #     plot_interactive_map(
+        #         y_pred_step,
+        #         "Prédiction",
+        #         zmin=vmin_pred,
+        #         zmax=vmax_pred
+        #     ),
             # width='stretch'
-        )
+        # )
+        
+        # st.plotly_chart(plot_interactive_map(
+        #         y_pred_step,
+        #         "Prédiction",
+        #         zmin=vmin_pred,
+        #         zmax=vmax_pred
+        #     ))
+        
+        display_interactive_map_fixed(y_pred_step, "Prediction", key="pred_map")
 
     with tab2:
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -756,6 +812,20 @@ def page_inference():
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.pyplot(plot_clean_map(err, "Error", cmap="Reds", figsize=(5,4), vmin=vmin_true, vmax=vmax_true))
+
+def page_explicabilite():
+    lat, lon = st.session_state.get("clicked_pixel", (None, None))
+    if lat is None:
+        st.warning("Aucun pixel sélectionné")
+        return
+
+    st.header(f"Explicabilité du pixel Lat={lat:.2f}, Lon={lon:.2f}")
+
+    # 🔹 Ici tu peux afficher :
+    # - heatmap d'importance par variable
+    # - contribution des canaux
+    # - etc.
+    st.write("Visualisation explicabilité à implémenter")
 
 # =====================================================
 # Main
@@ -776,18 +846,20 @@ def main():
     # Affichage du sidebar
     page_sidebar = st.sidebar.selectbox(
         "Navigation",
-        ["Accueil", "Inférence"],
-        index=0 if st.session_state.page == "Accueil" else 1
+        ["Accueil", "Inférence", "Explicabilité"],
+        index=["Accueil", "Inférence", "Explicabilité"].index(st.session_state.page)
     )
 
-    # mettre à jour session_state si sidebar change
-    st.session_state.page = page_sidebar
-
-    # afficher la page
+    # mettre à jour session_state seulement si l'utilisateur a changé le selectbox
+    if page_sidebar != st.session_state.page:
+        st.session_state.page = page_sidebar
+        
     if st.session_state.page == "Accueil":
         page_home()
-    else:
+    elif st.session_state.page == "Inférence":
         page_inference()
+    elif st.session_state.page == "Explicabilité":
+        page_explicabilite()
 
 
 if __name__ == "__main__":
