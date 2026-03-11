@@ -64,6 +64,69 @@ def integrated_gradients(model, x, baseline, steps=20):
     return ig
 
 
+def create_ig_plot_1var_1t(ig_np, t,c,i,j, out_dir_all_plots, var):
+    plt.figure(figsize=(6,5))
+    plt.imshow(ig_np[t, c], cmap="RdBu", vmin=-np.max(np.abs(ig_np[t, c])),
+               vmax=np.max(np.abs(ig_np[t, c])))
+    plt.colorbar(label="Integrated Gradient Contribution")
+    plt.title(f"Pixel ({i},{j}) - {var} - t={t}")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir_all_plots, f"ig_{var}_t{t}_pixel_{i}_{j}.png"), dpi=150)
+    plt.close()
+
+
+def create_ig_plots_all_vars_1plot(C, input_vars, t, ig_np, i, j, out_dir):
+    # Définir grid automatiquement : 2 colonnes
+    ncols = 2
+    nrows = (C + 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*5, nrows*4))
+    axes = axes.flatten()
+
+    for c, var in enumerate(input_vars):
+        im = axes[c].imshow(
+            ig_np[t, c],
+            cmap="RdBu",
+            vmin=-np.max(np.abs(ig_np[t, c])),
+            vmax=np.max(np.abs(ig_np[t, c]))
+        )
+        axes[c].set_title(var)
+        axes[c].axis("off")
+
+    # Supprimer axes vides
+    for ax in axes[C:]:
+        ax.axis("off")
+
+    # Colorbar globale
+    fig.colorbar(im, ax=axes[:C], fraction=0.02, pad=0.04, label="IG contribution")
+
+    plt.suptitle(f"Integrated Gradients - Input timestep {t}", fontsize=16)
+    plt.tight_layout(rect=[0,0,1,0.95])
+
+    # Sauvegarde
+    fname = os.path.join(out_dir, f"ig_grid_t{t}_pixel_{i}_{j}.png")
+    plt.savefig(fname, dpi=150)
+    plt.close()
+
+def create_ig_plot_aggregate_vars_1_t(importance_maps_per_time, t, out_dir, i, j):
+    plt.figure(figsize=(6,5))
+    plt.imshow(importance_maps_per_time[t], cmap="Reds", vmin=0,
+               vmax=np.max(importance_maps_per_time[t]))
+    plt.colorbar(label="Integrated Gradient Contribution")
+    plt.title(f"Pixel ({i},{j}) - t={t}")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, f"ig_aggregate_t{t}_pixel_{i}_{j}.png"), dpi=150)
+    plt.close()
+
+def create_ig_plot_fully_aggregated(importance_map_fully_aggregated, out_dir):
+    plt.figure(figsize=(6,5))
+    plt.imshow(importance_map_fully_aggregated, cmap="Reds", vmin=0,
+               vmax=np.max(importance_map_fully_aggregated))
+    plt.colorbar(label="Integrated Gradient Contribution")
+    plt.title(f"Pixel ({i},{j})")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, f"ig_aggregate_fully_pixel_{i}_{j}.png"), dpi=150)
+    plt.close()
+
 if __name__=="__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device=torch.device("cpu")
@@ -85,10 +148,10 @@ if __name__=="__main__":
     input_vars = list(dataset_test.X.coords["channel"].values)
     C_in = len(input_vars)
 
-    MODEL_TYPE = "unet" 
+    MODEL_TYPE = "convlstm"#"unet" 
     model = build_model(MODEL_TYPE, C_in, device)
 
-    ckpt_path = "checkpoints/run_144949/best_checkpoint_epoch5_batch_idx6479.pt"
+    ckpt_path = "checkpoints/convlstm/mse/epoch3_full.pt"#"checkpoints/run_144949/best_checkpoint_epoch5_batch_idx6479.pt"
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     print(f"Loaded checkpoint epoch={ckpt.get('epoch', 'unknown')} from {ckpt_path}")
@@ -119,13 +182,10 @@ if __name__=="__main__":
     ig = integrated_gradients(pixel_model, X_cpu, baseline, steps=50)
     print("Integrated Gradients computed, shape:", ig.shape)
 
-    out_dir = "explainability/ig_maps/UNet"
+    out_dir = "explainability/ig_maps/ConvLSTM"
     os.makedirs(out_dir, exist_ok=True)
 
     ig_np = ig[0].numpy()  # (T, C, H, W)
-    print(ig_np.shape)
-    np.save(os.path.join(out_dir, f"ig_pixel_{i}_{j}.npy"), ig_np)
-    print(f"Saved IG maps to {out_dir}/ig_pixel_{i}_{j}.npy")
 
     T, C, H, W = ig_np.shape
 
@@ -133,45 +193,19 @@ if __name__=="__main__":
     os.makedirs(out_dir_all_plots, exist_ok=True)
     for t in range(T):
         for c, var in enumerate(input_vars):
-            plt.figure(figsize=(6,5))
-            plt.imshow(ig_np[t, c], cmap="RdBu", vmin=-np.max(np.abs(ig_np[t, c])),
-                       vmax=np.max(np.abs(ig_np[t, c])))
-            plt.colorbar(label="Integrated Gradient Contribution")
-            plt.title(f"Pixel ({i},{j}) - {var} - t={t}")
-            plt.tight_layout()
-            plt.savefig(os.path.join(out_dir_all_plots, f"ig_{var}_t{t}_pixel_{i}_{j}.png"), dpi=150)
-            plt.close()
+            create_ig_plot_1var_1t(ig_np, t,c,i,j, out_dir_all_plots, var)
 
     for t in range(T):
-        # Définir grid automatiquement : 2 colonnes
-        ncols = 2
-        nrows = (C + 1) // ncols
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*5, nrows*4))
-        axes = axes.flatten()
+        create_ig_plots_all_vars_1plot(C, input_vars, t, ig_np, i, j, out_dir)
 
-        for c, var in enumerate(input_vars):
-            im = axes[c].imshow(
-                ig_np[t, c],
-                cmap="RdBu",
-                vmin=-np.max(np.abs(ig_np[t, c])),
-                vmax=np.max(np.abs(ig_np[t, c]))
-            )
-            axes[c].set_title(var)
-            axes[c].axis("off")
+    #Aggregate on variables (one plot per time step)
+    importance_maps_per_time = np.abs(ig_np).sum(axis=1)
+    out_dir_aggregate=os.path.join(out_dir, 'aggregate')
+    os.makedirs(out_dir_aggregate, exist_ok=True)
+    for t in range(T):
+        create_ig_plot_aggregate_vars_1_t(importance_maps_per_time, t, out_dir_aggregate, i, j)
 
-        # Supprimer axes vides
-        for ax in axes[C:]:
-            ax.axis("off")
-
-        # Colorbar globale
-        fig.colorbar(im, ax=axes[:C], fraction=0.02, pad=0.04, label="IG contribution")
-
-        plt.suptitle(f"Integrated Gradients - Input timestep {t}", fontsize=16)
-        plt.tight_layout(rect=[0,0,1,0.95])
-
-        # Sauvegarde
-        fname = os.path.join(out_dir, f"ig_grid_t{t}_pixel_{i}_{j}.png")
-        plt.savefig(fname, dpi=150)
-        plt.close()
+    importance_map_fully_aggregated = importance_maps_per_time.sum(axis=0)
+    create_ig_plot_fully_aggregated(importance_map_fully_aggregated, out_dir_aggregate)
 
     print(f"Saved IG grids in {out_dir}")
