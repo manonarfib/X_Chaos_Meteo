@@ -13,3 +13,5 @@ logs
 permutation_importance_*
 checkpoints*
 explainability/ig*/
+explainability/integrated_gradients/ig_outputs
+explainability/noise/noise_*
