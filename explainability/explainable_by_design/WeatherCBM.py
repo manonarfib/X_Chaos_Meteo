@@ -242,7 +242,7 @@ class WeatherCBM(nn.Module):
         # Linear combination
         y_hat = self.linear_combination(alpha)  # (B,1,H,W)
 
-        return y_hat
+        return y_hat, alpha
 
 if __name__ == "__main__":
     B = 2          # batch size
@@ -250,9 +250,9 @@ if __name__ == "__main__":
     C_in = 10      # number of input variables (features)
     H, W = 64, 96  # spatial size
 
-    model = PrecipConvLSTM(input_channels=C_in)
+    model = WeatherCBM(input_channels=C_in)
     x = torch.randn(B, T_in, C_in, H, W)
 
-    y_hat = model(x)
+    y_hat, alpha = model(x)
     print("Input shape :", x.shape)
     print("Output shape:", y_hat.shape)  # expected: (2, 1, 64, 96)
