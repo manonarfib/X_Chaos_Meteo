@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, SubsetRandomSampler
 
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
@@ -21,8 +21,12 @@ BATCH_SIZE = 8
 MAX_LEAD = 1
 WITHOUT_PRECIP = False
 
+TRAIN_DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_train.zarr"
 VAL_DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
-TEST_DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
+
+USE_TRAIN_SUBSAMPLE = True
+TRAIN_SUBSAMPLE_YEARS = 2
+RANDOM_SEED = 0
 
 CONVLSTM_CKPT = "checkpoints/convlstm/mse/epoch3_full.pt"
 UNET_CKPT = "checkpoints/unet/best_mse_true.pt"
@@ -31,10 +35,53 @@ ALPHAS = np.linspace(0.0, 1.0, 51)
 
 CSI_THRESHOLDS = [0.1, 5.0]
 
+# ============================================================
+# HELPER
+# ============================================================
+def build_random_train_sampler(dataset, n_years, seed=42):
+    # 4 pas de temps par jour (6h), approx 365 jours/an
+    n_samples = min(len(dataset), n_years * 365 * 4)
+
+    rng = np.random.default_rng(seed)
+    indices = rng.choice(len(dataset), size=n_samples, replace=False)
+
+    return SubsetRandomSampler(indices.tolist())
 
 # ============================================================
 # DATA
 # ============================================================
+train_dataset = ERA5Dataset(
+    TRAIN_DATASET_PATH,
+    T=T,
+    lead=LEAD,
+    without_precip=WITHOUT_PRECIP,
+    max_lead=MAX_LEAD
+)
+
+if USE_TRAIN_SUBSAMPLE:
+    train_sampler = build_random_train_sampler(
+        train_dataset,
+        n_years=TRAIN_SUBSAMPLE_YEARS,
+        seed=RANDOM_SEED
+    )
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        sampler=train_sampler,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True
+    )
+else:
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True
+    )
+
 val_dataset = ERA5Dataset(
     VAL_DATASET_PATH,
     T=T,
@@ -44,22 +91,6 @@ val_dataset = ERA5Dataset(
 )
 val_loader = DataLoader(
     val_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=4,
-    pin_memory=True,
-    persistent_workers=True
-)
-
-test_dataset = ERA5Dataset(
-    TEST_DATASET_PATH,
-    T=T,
-    lead=LEAD,
-    without_precip=WITHOUT_PRECIP,
-    max_lead=MAX_LEAD
-)
-test_loader = DataLoader(
-    test_dataset,
     batch_size=BATCH_SIZE,
     shuffle=False,
     num_workers=4,
@@ -168,7 +199,7 @@ def finalize_metrics(acc, csi_thresholds):
 
 
 # ============================================================
-# FAST EVAL: BOTH MODELS IN ONE PASS
+# FAST TRAIN: BOTH MODELS IN ONE PASS
 # ============================================================
 @torch.inference_mode()
 def collect_predictions_and_metrics(convlstm_model, unet_model, dataloader, device, max_lead, csi_thresholds):
@@ -272,20 +303,20 @@ def main():
     convlstm_model = load_model("convlstm", CONVLSTM_CKPT, C_in, DEVICE, MAX_LEAD)
     unet_model = load_model("unet", UNET_CKPT, C_in, DEVICE, MAX_LEAD)
 
-    print("\nCollecting VAL predictions (single pass)...")
-    val_convlstm_result, val_unet_result, val_conv_preds, val_unet_preds, val_targets = \
+    print("\nCollecting TRAIN-SUBSET predictions (single pass, random 2-year subset)...")
+    train_convlstm_result, train_unet_result, train_conv_preds, train_unet_preds, train_targets = \
         collect_predictions_and_metrics(
-            convlstm_model, unet_model, val_loader, DEVICE, MAX_LEAD, CSI_THRESHOLDS
+            convlstm_model, unet_model, train_loader, DEVICE, MAX_LEAD, CSI_THRESHOLDS
         )
 
-    print_metrics("ConvLSTM VAL", val_convlstm_result)
-    print_metrics("UNet VAL", val_unet_result)
+    print_metrics("ConvLSTM TRAIN-SUBSET", train_convlstm_result)
+    print_metrics("UNet TRAIN-SUBSET", train_unet_result)
 
-    print("\n=== Ensemble search on validation (cached predictions) ===")
+    print("\n=== Ensemble search on train (cached predictions) ===")
     alpha_results = []
     for alpha in ALPHAS:
         result = evaluate_alpha_from_cached_predictions(
-            val_conv_preds, val_unet_preds, val_targets, alpha, CSI_THRESHOLDS
+            train_conv_preds, train_unet_preds, train_targets, alpha, CSI_THRESHOLDS
         )
         alpha_results.append(result)
 
@@ -300,7 +331,7 @@ def main():
             f"total={r['rank_total']}"
         )
 
-    print_metrics(f"Best Ensemble VAL (alpha={best_result['alpha']:.2f})", best_result)
+    print_metrics(f"Best Ensemble TRAIN-SUBSET (alpha={best_result['alpha']:.2f})", best_result)
     print(
         f"Selected by rank sum: "
         f"MSE rank={best_result['rank_mse']}, "
@@ -309,19 +340,19 @@ def main():
         f"total={best_result['rank_total']}"
     )
 
-    print("\nCollecting TEST predictions (single pass)...")
-    test_convlstm_result, test_unet_result, test_conv_preds, test_unet_preds, test_targets = \
+    print("\nCollecting VAL predictions (single pass)...")
+    val_convlstm_result, val_unet_result, val_conv_preds, val_unet_preds, val_targets = \
         collect_predictions_and_metrics(
-            convlstm_model, unet_model, test_loader, DEVICE, MAX_LEAD, CSI_THRESHOLDS
+            convlstm_model, unet_model, val_loader, DEVICE, MAX_LEAD, CSI_THRESHOLDS
         )
 
-    print_metrics("ConvLSTM TEST", test_convlstm_result)
-    print_metrics("UNet TEST", test_unet_result)
+    print_metrics("ConvLSTM VAL", val_convlstm_result)
+    print_metrics("UNet VAL", val_unet_result)
 
-    test_ensemble_result = evaluate_alpha_from_cached_predictions(
-        test_conv_preds, test_unet_preds, test_targets, best_result["alpha"], CSI_THRESHOLDS
+    val_ensemble_result = evaluate_alpha_from_cached_predictions(
+        val_conv_preds, val_unet_preds, val_targets, best_result["alpha"], CSI_THRESHOLDS
     )
-    print_metrics(f"Best Ensemble TEST (alpha={best_result['alpha']:.2f})", test_ensemble_result)
+    print_metrics(f"Best Ensemble VAL (alpha={best_result['alpha']:.2f})", val_ensemble_result)
 
 
 if __name__ == "__main__":
@@ -462,3 +493,140 @@ if __name__ == "__main__":
 # MAE: 0.319197
 # CSI @ 0.1 mm: 0.659404
 # CSI @ 5.0 mm: 0.437381
+
+
+# Device: cuda
+# Loaded convlstm checkpoint from checkpoints/convlstm/mse/epoch3_full.pt | epoch=3
+# Loaded unet checkpoint from checkpoints/unet/best_mse_true.pt | epoch=5
+
+# Collecting TRAIN predictions (single pass, random 2-year subset)...
+# Batch 0/365
+# Batch 20/365
+# Batch 40/365
+# Batch 60/365
+# Batch 80/365
+# Batch 100/365
+# Batch 120/365
+# Batch 140/365
+# Batch 160/365
+# Batch 180/365
+# Batch 200/365
+# Batch 220/365
+# Batch 240/365
+# Batch 260/365
+# Batch 280/365
+# Batch 300/365
+# Batch 320/365
+# Batch 340/365
+# Batch 360/365
+
+# === ConvLSTM TRAIN-SUBSET ===
+# MSE: 0.653866
+# MAE: 0.317028
+# CSI @ 0.1 mm: 0.682827
+# CSI @ 5.0 mm: 0.411327
+
+# === UNet TRAIN-SUBSET ===
+# MSE: 0.602932
+# MAE: 0.318144
+# CSI @ 0.1 mm: 0.627133
+# CSI @ 5.0 mm: 0.454234
+
+# === Ensemble search on train (cached predictions) ===
+# alpha=0.00 | MSE=0.602932 | MAE=0.318144 | CSI@0.1=0.627133 | CSI@5.0=0.454234 | ranks=(40,51,19) | total=110
+# alpha=0.02 | MSE=0.599132 | MAE=0.316766 | CSI@0.1=0.629114 | CSI@5.0=0.454812 | ranks=(38,50,17) | total=105
+# alpha=0.04 | MSE=0.595528 | MAE=0.315455 | CSI@0.1=0.631056 | CSI@5.0=0.455390 | ranks=(36,49,15) | total=100
+# alpha=0.06 | MSE=0.592121 | MAE=0.314206 | CSI@0.1=0.632968 | CSI@5.0=0.455832 | ranks=(34,48,13) | total=95
+# alpha=0.08 | MSE=0.588911 | MAE=0.313017 | CSI@0.1=0.634817 | CSI@5.0=0.456202 | ranks=(32,47,11) | total=90
+# alpha=0.10 | MSE=0.585897 | MAE=0.311888 | CSI@0.1=0.636625 | CSI@5.0=0.456482 | ranks=(30,46,9) | total=85
+# alpha=0.12 | MSE=0.583080 | MAE=0.310817 | CSI@0.1=0.638421 | CSI@5.0=0.456729 | ranks=(28,45,7) | total=80
+# alpha=0.14 | MSE=0.580460 | MAE=0.309805 | CSI@0.1=0.640188 | CSI@5.0=0.456910 | ranks=(26,44,5) | total=75
+# alpha=0.16 | MSE=0.578037 | MAE=0.308850 | CSI@0.1=0.641929 | CSI@5.0=0.457005 | ranks=(24,43,4) | total=71
+# alpha=0.18 | MSE=0.575810 | MAE=0.307952 | CSI@0.1=0.643636 | CSI@5.0=0.457061 | ranks=(22,42,2) | total=66
+# alpha=0.20 | MSE=0.573780 | MAE=0.307111 | CSI@0.1=0.645326 | CSI@5.0=0.457082 | ranks=(20,41,1) | total=62
+# alpha=0.22 | MSE=0.571946 | MAE=0.306326 | CSI@0.1=0.646972 | CSI@5.0=0.457012 | ranks=(18,40,3) | total=61
+# alpha=0.24 | MSE=0.570310 | MAE=0.305597 | CSI@0.1=0.648596 | CSI@5.0=0.456863 | ranks=(16,39,6) | total=61
+# alpha=0.26 | MSE=0.568870 | MAE=0.304924 | CSI@0.1=0.650205 | CSI@5.0=0.456634 | ranks=(14,38,8) | total=60
+# alpha=0.28 | MSE=0.567626 | MAE=0.304305 | CSI@0.1=0.651791 | CSI@5.0=0.456364 | ranks=(12,37,10) | total=59
+# alpha=0.30 | MSE=0.566580 | MAE=0.303742 | CSI@0.1=0.653351 | CSI@5.0=0.455983 | ranks=(10,36,12) | total=58
+# alpha=0.32 | MSE=0.565730 | MAE=0.303233 | CSI@0.1=0.654894 | CSI@5.0=0.455627 | ranks=(8,35,14) | total=57
+# alpha=0.34 | MSE=0.565077 | MAE=0.302779 | CSI@0.1=0.656402 | CSI@5.0=0.455094 | ranks=(6,34,16) | total=56
+# alpha=0.36 | MSE=0.564620 | MAE=0.302379 | CSI@0.1=0.657889 | CSI@5.0=0.454581 | ranks=(4,33,18) | total=55
+# alpha=0.38 | MSE=0.564360 | MAE=0.302033 | CSI@0.1=0.659335 | CSI@5.0=0.453875 | ranks=(2,32,20) | total=54
+# alpha=0.40 | MSE=0.564297 | MAE=0.301740 | CSI@0.1=0.660769 | CSI@5.0=0.453240 | ranks=(1,31,21) | total=53
+# alpha=0.42 | MSE=0.564431 | MAE=0.301501 | CSI@0.1=0.662165 | CSI@5.0=0.452504 | ranks=(3,30,22) | total=55
+# alpha=0.44 | MSE=0.564761 | MAE=0.301316 | CSI@0.1=0.663540 | CSI@5.0=0.451657 | ranks=(5,29,23) | total=57
+# alpha=0.46 | MSE=0.565288 | MAE=0.301183 | CSI@0.1=0.664880 | CSI@5.0=0.450796 | ranks=(7,28,24) | total=59
+# alpha=0.48 | MSE=0.566011 | MAE=0.301103 | CSI@0.1=0.666198 | CSI@5.0=0.449907 | ranks=(9,27,25) | total=61
+# alpha=0.50 | MSE=0.566932 | MAE=0.301076 | CSI@0.1=0.667476 | CSI@5.0=0.448907 | ranks=(11,26,26) | total=63
+# alpha=0.52 | MSE=0.568049 | MAE=0.301100 | CSI@0.1=0.668723 | CSI@5.0=0.447873 | ranks=(13,25,27) | total=65
+# alpha=0.54 | MSE=0.569362 | MAE=0.301176 | CSI@0.1=0.669940 | CSI@5.0=0.446752 | ranks=(15,24,28) | total=67
+# alpha=0.56 | MSE=0.570873 | MAE=0.301304 | CSI@0.1=0.671123 | CSI@5.0=0.445600 | ranks=(17,23,29) | total=69
+# alpha=0.58 | MSE=0.572580 | MAE=0.301484 | CSI@0.1=0.672273 | CSI@5.0=0.444334 | ranks=(19,22,30) | total=71
+# alpha=0.60 | MSE=0.574484 | MAE=0.301714 | CSI@0.1=0.673372 | CSI@5.0=0.443168 | ranks=(21,21,31) | total=73
+# alpha=0.62 | MSE=0.576584 | MAE=0.301996 | CSI@0.1=0.674434 | CSI@5.0=0.441892 | ranks=(23,20,32) | total=75
+# alpha=0.64 | MSE=0.578882 | MAE=0.302329 | CSI@0.1=0.675456 | CSI@5.0=0.440486 | ranks=(25,19,33) | total=77
+# alpha=0.66 | MSE=0.581375 | MAE=0.302712 | CSI@0.1=0.676432 | CSI@5.0=0.439175 | ranks=(27,18,34) | total=79
+# alpha=0.68 | MSE=0.584066 | MAE=0.303146 | CSI@0.1=0.677352 | CSI@5.0=0.437779 | ranks=(29,17,35) | total=81
+# alpha=0.70 | MSE=0.586953 | MAE=0.303630 | CSI@0.1=0.678217 | CSI@5.0=0.436288 | ranks=(31,16,36) | total=83
+# alpha=0.72 | MSE=0.590037 | MAE=0.304165 | CSI@0.1=0.679038 | CSI@5.0=0.434764 | ranks=(33,15,37) | total=85
+# alpha=0.74 | MSE=0.593318 | MAE=0.304750 | CSI@0.1=0.679776 | CSI@5.0=0.433291 | ranks=(35,14,38) | total=87
+# alpha=0.76 | MSE=0.596795 | MAE=0.305385 | CSI@0.1=0.680472 | CSI@5.0=0.431741 | ranks=(37,13,39) | total=89
+# alpha=0.78 | MSE=0.600470 | MAE=0.306071 | CSI@0.1=0.681107 | CSI@5.0=0.430191 | ranks=(39,12,40) | total=91
+# alpha=0.80 | MSE=0.604340 | MAE=0.306807 | CSI@0.1=0.681687 | CSI@5.0=0.428582 | ranks=(41,11,41) | total=93
+# alpha=0.82 | MSE=0.608408 | MAE=0.307593 | CSI@0.1=0.682192 | CSI@5.0=0.426927 | ranks=(42,10,42) | total=94
+# alpha=0.84 | MSE=0.612672 | MAE=0.308430 | CSI@0.1=0.682631 | CSI@5.0=0.425260 | ranks=(43,9,43) | total=95
+# alpha=0.86 | MSE=0.617133 | MAE=0.309318 | CSI@0.1=0.683003 | CSI@5.0=0.423584 | ranks=(44,7,44) | total=95
+# alpha=0.88 | MSE=0.621790 | MAE=0.310257 | CSI@0.1=0.683277 | CSI@5.0=0.421927 | ranks=(45,5,45) | total=95
+# alpha=0.90 | MSE=0.626645 | MAE=0.311248 | CSI@0.1=0.683456 | CSI@5.0=0.420182 | ranks=(46,3,46) | total=95
+# alpha=0.92 | MSE=0.631696 | MAE=0.312291 | CSI@0.1=0.683545 | CSI@5.0=0.418448 | ranks=(47,1,47) | total=95
+# alpha=0.94 | MSE=0.636943 | MAE=0.313388 | CSI@0.1=0.683532 | CSI@5.0=0.416693 | ranks=(48,2,48) | total=98
+# alpha=0.96 | MSE=0.642388 | MAE=0.314540 | CSI@0.1=0.683408 | CSI@5.0=0.414938 | ranks=(49,4,49) | total=102
+# alpha=0.98 | MSE=0.648029 | MAE=0.315750 | CSI@0.1=0.683179 | CSI@5.0=0.413170 | ranks=(50,6,50) | total=106
+# alpha=1.00 | MSE=0.653866 | MAE=0.317028 | CSI@0.1=0.682827 | CSI@5.0=0.411327 | ranks=(51,8,51) | total=110
+
+# === Best Ensemble TRAIN-SUBSET (alpha=0.40) ===
+# MSE: 0.564297
+# MAE: 0.301740
+# CSI @ 0.1 mm: 0.660769
+# CSI @ 5.0 mm: 0.453240
+# Selected by rank sum: MSE rank=1, CSI@0.1 rank=31, CSI@5.0 rank=21, total=53
+
+# Collecting VAL predictions (single pass)...
+# Batch 0/363
+# Batch 20/363
+# Batch 40/363
+# Batch 60/363
+# Batch 80/363
+# Batch 100/363
+# Batch 120/363
+# Batch 140/363
+# Batch 160/363
+# Batch 180/363
+# Batch 200/363
+# Batch 220/363
+# Batch 240/363
+# Batch 260/363
+# Batch 280/363
+# Batch 300/363
+# Batch 320/363
+# Batch 340/363
+# Batch 360/363
+
+# === ConvLSTM VAL ===
+# MSE: 0.722578
+# MAE: 0.328448
+# CSI @ 0.1 mm: 0.676467
+# CSI @ 5.0 mm: 0.399532
+
+# === UNet VAL ===
+# MSE: 0.679499
+# MAE: 0.331537
+# CSI @ 0.1 mm: 0.620745
+# CSI @ 5.0 mm: 0.428980
+
+# === Best Ensemble VAL (alpha=0.40) ===
+# MSE: 0.634682
+# MAE: 0.314578
+# CSI @ 0.1 mm: 0.654225
+# CSI @ 5.0 mm: 0.433006
