@@ -9,6 +9,9 @@ from streamlit_plotly_events import plotly_events
 import plotly.express as px
 import io
 from PIL import Image
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -87,101 +90,10 @@ def build_target_index(times, T, lead):
     max_start = len(times) - T - lead + 1
 
     for t0 in range(max_start):
-        first_pred_time = times[t0 + T]  # ✅ début des prédictions
+        first_pred_time = times[t0 + T] 
         target_to_index[first_pred_time] = t0
 
     return target_to_index
-
-# =====================================================
-# Plotly map (zoom + hover pixel)
-# =====================================================
-
-def plot_interactive_map_geo(arr: np.ndarray, title: str,
-                             lon_min=-12.5, lon_max=42.5,
-                             lat_min=35, lat_max=72):
-
-    H, W = arr.shape
-
-    lons = np.linspace(lon_min, lon_max, W)
-    lats = np.linspace(lat_min, lat_max, H)
-
-    fig = px.imshow(
-        arr,
-        x=lons,
-        y=lats,
-        origin="lower",
-        aspect="auto",
-        title=title,
-        labels=dict(x="Longitude", y="Latitude", color="Value")
-    )
-
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=40, b=0),
-        dragmode="zoom",
-    )
-
-    fig.update_xaxes(constrain="domain")
-    fig.update_yaxes(scaleanchor="x", scaleratio=1)
-
-    return fig
-
-import folium
-from streamlit_folium import st_folium
-import matplotlib.pyplot as plt
-from matplotlib import cm
-
-
-def array_to_png_overlay(arr, vmin=None, vmax=None, cmap_name="Blues"):
-    arr = np.array(arr)
-
-    if vmin is None:
-        vmin = np.nanmin(arr)
-    if vmax is None:
-        vmax = np.nanmax(arr)
-
-    norm = plt.Normalize(vmin=vmin, vmax=vmax)
-    cmap = cm.get_cmap(cmap_name)
-
-    rgba = cmap(norm(arr))  # (H,W,4)
-    rgba[..., 3] = np.where(np.isfinite(arr), 0.85, 0.0)  # alpha mask
-
-    return (rgba * 255).astype(np.uint8)
-
-def plot_folium_raster(arr, title,
-                       region=(-12.5, 42.5, 35, 72),
-                       cmap="Blues"):
-
-    lon_min, lon_max, lat_min, lat_max = region
-
-    center_lat = (lat_min + lat_max) / 2
-    center_lon = (lon_min + lon_max) / 2
-
-    m = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=4,
-        tiles="OpenStreetMap"
-    )
-
-    img = array_to_png_overlay(arr, cmap_name=cmap)
-
-    folium.raster_layers.ImageOverlay(
-        image=img,
-        bounds=[[lat_min, lon_min], [lat_max, lon_max]],
-        opacity=1.0,
-        interactive=True,
-        cross_origin=False,
-    ).add_to(m)
-
-    folium.LayerControl().add_to(m)
-
-    return m
-
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-from matplotlib import cm
-import numpy as np
-import streamlit as st
 
 def plot_clean_map(arr: np.ndarray, title: str,
                    lon_min=-12.5, lon_max=42.5,
@@ -454,7 +366,7 @@ def splash_screen():
 # =====================================================
 
 def page_home():
-    st.title("Démonstrateur du Projet XChaos : Explicabilité d'un Système Chaotique - Prévisions Météorologiques 🌧️")
+    st.title("Projet XChaos : Explicabilité d'un Système Chaotique - Prévisions Météorologiques 🌧️")
     
     # Bannière centrale (GIF)
     # st.markdown(
@@ -472,9 +384,9 @@ def page_home():
     st.header("💡 Aperçu")
     st.markdown(
         """
-        Ce démonstrateur vous permet d'explorer des modèles de deep learning pour la prévision des précipitations en Europe
-        sur un horizon de 6 heures à partir des données ERA5.  
-        Vous pouvez également analyser **l'explicabilité des modèles**.
+        Ce démonstrateur vous permet d'explorer des modèles de Deep Learning pour la prévision des précipitations en Europe
+        sur un horizon de 6 heures. Les entraînements ont été réalisés à partir de données ERA5.  
+        Vous pouvez également analyser l'explicabilité des modèles de manière globale, ou propre à la prédiction que vous souhaitez réaliser.
         """
     )
 
@@ -482,21 +394,37 @@ def page_home():
     st.header("🧩 Fonctionnalités")
     col1, col2 = st.columns(2)
     col1.markdown("""
-    - Choix du modèle (ConvLSTM / U-Net)  
+    Inférence : 
     - Sélection des paramètres temporels  
-    - Lancer l'inférence à la demande
+    - Sélection du modèle
+    L'inférence est disponible dans l'onglet 'Inférence'.
     """)
     col2.markdown("""
-    - Zoom et survol des pixels  (TO DO)
-    - Visualisation de l'influence des variables d'entrée  (TO DO)
-    - Autre explicabilité (TO DO)
+    Explicabilité :
+    - Explicabilité globale : importance des variables et des pas de temps pour chaque modèle.
+    - Explicabilité locale : 
+    L'explicabilité globale est disponible dans l'onglet 'Explicabilité locale'.
+    L'explicabilité locale est disponible dans l'onglet 'Explicabilité locale', mais après avoir lancé l'inférence d'un échantillon seulement.    
     """)
+
+    # Bouton pour aller directement à la page d'inférence
+    if st.button("▶ Aller à l'inférence"):
+        st.session_state.page = "Inférence"
+        st.rerun()
  
+    # Bouton pour aller directement à la page d'inférence
+    if st.button("▶ Aller à l'explicabilité globale"):
+        st.session_state.page = "Explicabilité globale"
+        st.rerun()
 
     st.markdown("---")
 
     # Section Modèles
     st.header("⚙️ Modèles")
+    st.markdown(
+        """
+        Trois modèles ont été développés dans le cadre de ce projet : un modèle ConvLSTM, un U-Net, et un modèle explicable par nature : Weather CBM."""
+    )
     st.subheader("ConvLSTM")
     st.markdown(
         """
@@ -518,6 +446,13 @@ def page_home():
         """
     )
 
+    st.subheader("Weather CBM")
+    st.markdown(
+        """
+        TO DO
+        """
+    )
+
     st.markdown("---")
 
     # Section Auteurs et remerciements
@@ -528,14 +463,10 @@ def page_home():
         **Manon Arfib** — [GitHub](https://github.com/manonarfib)  
         **Nathan Morin** — [GitHub](https://github.com/Nathan9842)  
 
-        Un grand merci à **Florestan Fontaine** de HeadMind Partners pour ses conseils et son accompagnement.
+        Un grand merci à Florestan Fontaine de HeadMind Partners pour ses conseils et son accompagnement.
         """
     )
-    
-    # Bouton pour aller directement à la page d'inférence
-    if st.button("▶ Aller à l'inférence"):
-        st.session_state.page = "Inférence"
-        st.rerun()
+
 
 
 def page_inference():
@@ -813,7 +744,7 @@ def page_inference():
         with col2:
             st.pyplot(plot_clean_map(err, "Error", cmap="Reds", figsize=(5,4), vmin=vmin_true, vmax=vmax_true))
 
-def page_explicabilite():
+def page_explicabilite_locale():
     lat, lon = st.session_state.get("clicked_pixel", (None, None))
     if lat is None:
         st.warning("Aucun pixel sélectionné")
@@ -825,6 +756,9 @@ def page_explicabilite():
     # - heatmap d'importance par variable
     # - contribution des canaux
     # - etc.
+    st.write("Visualisation explicabilité à implémenter")
+
+def page_explicabilite_globale():
     st.write("Visualisation explicabilité à implémenter")
 
 # =====================================================
@@ -858,8 +792,10 @@ def main():
         page_home()
     elif st.session_state.page == "Inférence":
         page_inference()
-    elif st.session_state.page == "Explicabilité":
-        page_explicabilite()
+    elif st.session_state.page == "Explicabilité locale":
+        page_explicabilite_locale()
+    elif st.session_state.page == "Explicabilité globale":
+        page_explicabilite_globale()
 
 
 if __name__ == "__main__":
