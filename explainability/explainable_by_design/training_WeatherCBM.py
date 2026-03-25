@@ -39,7 +39,7 @@ class Config:
     number_of_days_before_eval = 730 # 365*2 = 2 ans
 
     # Training
-    n_epochs: int = 3
+    n_epochs: int = 6
     lr: float = 1e-3
     loss_type: str = "mse"
 
@@ -50,9 +50,9 @@ class Config:
 
     # Logging / checkpoint
     num_exp=0
-    checkpoint_dir: str = f"checkpoints/weather_cbm/exp_{0}"
-    train_csv: str = f"checkpoints/weather_cbm/exp_{0}/train_log.csv"
-    val_csv: str = f"checkpoints/weather_cbm/exp_{0}/validation_log.csv"
+    checkpoint_dir: str = f"checkpoints/weather_cbm/exp_{num_exp}"
+    train_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/train_log.csv"
+    val_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/validation_log.csv"
     
     # Misc
     seed: int = 42
