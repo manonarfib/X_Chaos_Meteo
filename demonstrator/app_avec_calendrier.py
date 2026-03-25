@@ -19,6 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
 from models.unet.model_without_collapse import WFUNet_with_train
+from demonstrator.feature_permutation_for_app import feature_permutation_for_one_sample, integrated_gradients_for_one_sample
 
 # =====================================================
 # Utils
@@ -127,6 +128,24 @@ def plot_clean_map(arr: np.ndarray, title: str,
     
     fig.colorbar(img, ax=ax, orientation='vertical', label='Précipitations (mm)')
     ax.set_title(title)
+
+    return fig
+
+def plot_image(arr: np.ndarray, title: str):
+
+    fig = plt.figure()
+    ax = plt.axes()
+    img = ax.imshow(
+        arr,
+        origin='lower',
+        extent=[lon_min, lon_max, lat_min, lat_max],
+        cmap=cmap,
+        alpha=0.8,
+        aspect='auto',
+        vmin=vmin,
+        vmax=vmax
+    )
+    
 
     return fig
 
@@ -468,7 +487,6 @@ def page_home():
     )
 
 
-
 def page_inference():
     st.title("Inférence : Prévisions de précipitations")
 
@@ -522,6 +540,7 @@ def page_inference():
         dataset_path = dataset_files[dataset_choice]
 
     st.write(f"Dataset sélectionné : {dataset_path}")
+    st.session_state.dataset_path = dataset_path
     # dataset_path = "/usr/users/x_chaos_meteo/arfib_lou/X_Chaos_Meteo/demonstrator/era5_europe_ml_test_2_weeks.zarr"
     # st.write(f"Dataset sélectionné : {dataset_path}")
     
@@ -539,7 +558,7 @@ def page_inference():
     else:
         st.info("Pour lead_time = 8, seul ConvLSTM est disponible")
         ckpt_choice = "ConvLSTM"
-    
+    st.session_state.model = ckpt_choice
     # ckpt_choice = st.radio("Modèle", ["convlstm", "unet"])
 
     ckpt_paths = {
@@ -553,13 +572,16 @@ def page_inference():
     }
     
     ckpt_path = ckpt_paths[(ckpt_choice, lead)]
+    st.session_state.ckpt_path = ckpt_path
     # st.write(f"Checkpoint utilisé : {ckpt_path}")
 
     # ---------------- Load dataset (UNE FOIS) ----------------
     T = 8
+    st.session_state.T = T
     
     dataset, input_vars, times = load_dataset(dataset_path, T, lead)
     C_in = len(input_vars)
+    st.session_state.times = times
 
     # ---------------- Datetime selection ----------------
     st.subheader("Sélection de la date à laquelle prédire les précipitations :")
@@ -666,6 +688,8 @@ def page_inference():
         st.session_state.y_pred_seq = y_pred
         st.session_state.has_prediction = True
 
+        st.session_state.inference_done = True
+
     # ---------------- Display ----------------
     if not st.session_state.get("has_prediction", False):
         st.info("Clique sur 'Lancer l'inférence' pour générer une prédiction.")
@@ -693,6 +717,9 @@ def page_inference():
         )
     else:
         step = 0
+
+    st.session_state.step = step
+    st.session_state.lead = lead
     
     y_pred_step = y_pred_seq[step]
     y_true_step = y_true_seq[step]
@@ -712,9 +739,9 @@ def page_inference():
     vmax_pred = np.max(y_pred_seq)
 
     with tab1:
-        # col1, col2, col3 = st.columns([1, 2, 1])
-        # with col2:
-            # st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
         # st.plotly_chart(
         #     plot_interactive_map(
         #         y_pred_step,
@@ -725,14 +752,14 @@ def page_inference():
             # width='stretch'
         # )
         
-        # st.plotly_chart(plot_interactive_map(
+        # st.plotly_chart(plot_interactive_map_true(
         #         y_pred_step,
         #         "Prédiction",
         #         zmin=vmin_pred,
         #         zmax=vmax_pred
         #     ))
         
-        display_interactive_map_fixed(y_pred_step, "Prediction", key="pred_map")
+        # display_interactive_map_fixed(y_pred_step, "Prediction", key="pred_map")
 
     with tab2:
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -744,19 +771,488 @@ def page_inference():
         with col2:
             st.pyplot(plot_clean_map(err, "Error", cmap="Reds", figsize=(5,4), vmin=vmin_true, vmax=vmax_true))
 
-def page_explicabilite_locale():
-    lat, lon = st.session_state.get("clicked_pixel", (None, None))
-    if lat is None:
-        st.warning("Aucun pixel sélectionné")
+    # Bouton pour aller directement à la page d'explicabilité locale
+    if st.button("▶ Comprendre cette prédiction"):
+        st.session_state.page = "Explicabilité Locale"
+        st.rerun()
         return
 
-    st.header(f"Explicabilité du pixel Lat={lat:.2f}, Lon={lon:.2f}")
+# def page_explicabilite_locale():
 
-    # 🔹 Ici tu peux afficher :
-    # - heatmap d'importance par variable
-    # - contribution des canaux
-    # - etc.
-    st.write("Visualisation explicabilité à implémenter")
+#     st.header("Explicabilité locale : comprendre une prédiction")
+
+#     inference_done = st.session_state.get("inference_done", None)
+#     if inference_done is None:
+#         st.warning("Aucun prédiction à expliquer. Veuillez lancer une inférence avant de vous rendre sur la page Explicabilité Locale.")
+#         return
+
+#     # RESET SI SAMPLE CHANGE
+#     current_idx = st.session_state.sample_idx
+    
+
+#     if "last_sample_idx" not in st.session_state:
+#         st.session_state.last_sample_idx = current_idx
+
+#     keys_to_reset = [
+#         "var_figs",
+#         "var_names",
+#         "ig_barplot",
+#         "ig_lineplot",
+#         "perm_barplot",
+#         "perm_lineplot"
+#     ]
+
+#     if st.session_state.last_sample_idx != current_idx:
+#         for k in keys_to_reset:
+#             st.session_state.pop(k, None)
+#         st.info("L'échantillon a changé. Les explications doivent être recalculées.")
+
+#     st.session_state.last_sample_idx = current_idx
+
+#     times = st.session_state.times
+#     time_predicted = times[st.session_state.sample_idx + st.session_state.T + st.session_state.step]
+#     st.markdown(
+#         f"""La prédiction suivante est expliquée :  
+#     **Modèle :** {st.session_state.model}  
+#     **Date :** {st.session_state.selected_dt}
+#     """
+#     )
+
+#     st.subheader("Importance du temps et des variables pour la prédiction de cet échantillon.")
+
+#     run = st.button("Lancer l'explication.")
+#     st.warning("Attention, à ne lancer qu'avec un GPU. Cette opération est très lente sur CPU (1 heure environ).")
+
+#     if run:
+#         st.success("Explication en cours, cette opération peut prendre plusieurs minutes...")
+
+#         tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+#         app_dir = os.path.dirname(__file__)
+
+#         with st.spinner("Calcul des integrated gradients..."):
+#             progress_bar = st.progress(0)
+#             status_text = st.empty()
+#             barplot, lineplot, var_figs, var_names = integrated_gradients_for_one_sample(
+#                                                                     st.session_state.model, 
+#                                                                     st.session_state.ckpt_path, 
+#                                                                     st.session_state.dataset_path,
+#                                                                     st.session_state.lead,
+#                                                                     st.session_state.T,
+#                                                                     1,
+#                                                                     st.session_state.sample_idx,
+#                                                                     _progress_bar = progress_bar,
+#                                                                     _status_text=status_text  
+#                                                         )
+#             progress_bar.progress(100)
+#             status_text.text("Explication terminée.")
+
+#         with tab1:
+#             col1, col2 = st.columns([2, 2])
+#             with col1:
+#                 st.pyplot(barplot, caption="Gradients intégrés - Importance temporelle pour cette prédiction")
+#             with col2:
+#                 st.pyplot(lineplot, caption="Gradients intégrés - Importance des variables pour cette prédiction")
+
+#             with tab2:
+#                 col1, col2 = st.columns([2, 2])
+#                 with st.spinner("Calcul de la permutation de variables..."):
+#                     progress_bar = st.progress(0)
+#                     status_text = st.empty()
+#                     barplot, lineplot = feature_permutation_for_one_sample(st.session_state.model, 
+#                                                                     st.session_state.ckpt_path, 
+#                                                                     st.session_state.dataset_path,
+#                                                                     st.session_state.lead,
+#                                                                     st.session_state.T,
+#                                                                     1,
+#                                                                     st.session_state.sample_idx,
+#                                                                     progress_bar=progress_bar,
+#                                                                     status_text=status_text
+#                                                                     )
+#                     progress_bar.progress(100)
+#                     status_text.text("Explication terminée.")
+#                 with col1:
+#                     st.pyplot(barplot, caption="Permutation des variables - Importance temporelle pour cette prédiction")
+#                 with col2:
+#                     st.pyplot(lineplot, caption="Permutation des variables - Importance des variables pour cette prédiction")
+
+
+#     st.subheader("Focus de les integrated gradients pour chacune des variables.")
+
+#     # Mettre un bouton choix pour choisir parmi les 33 variables. Je veux qu'elles soient rangées dans l'ordre
+#     if "var_figs" not in st.session_state:
+#         st.session_state.var_figs = None
+#         st.session_state.var_names = None
+
+#     run_ig = st.button("Lancer l'explication avec les integrated gradients.")
+
+#     st.warning("Cette opération peut prendre plusieurs minutes. Préférez un GPU.")
+
+#     if run_ig:
+#         progress_bar = st.progress(0)
+#         status_text = st.empty()
+
+#         barplot, lineplot, var_figs, var_names = integrated_gradients_for_one_sample(
+#             st.session_state.model,
+#             st.session_state.ckpt_path,
+#             st.session_state.dataset_path,
+#             st.session_state.lead,
+#             st.session_state.T,
+#             1,
+#             st.session_state.sample_idx,
+#             _progress_bar=progress_bar,
+#             _status_text=status_text
+#         )
+
+#         progress_bar.progress(100)
+#         status_text.text("Explication terminée.")
+
+#         st.session_state.var_figs = var_figs
+#         st.session_state.var_names = var_names
+
+
+#     # affichage si résultats disponibles
+#     if st.session_state.var_figs is not None:
+
+#         selected_var = st.selectbox(
+#             "Choisissez une variable",
+#             st.session_state.var_names
+#         )
+
+#         idx = st.session_state.var_names.index(selected_var)
+
+#         st.pyplot(st.session_state.var_figs[idx])
+
+#         st.write("Regarde l'évolution de cette variable")
+
+# def page_explicabilite_locale():
+
+# def page_explicabilite_locale():
+    st.header("Explicabilité locale : comprendre une prédiction")
+
+    if st.session_state.get("inference_done") is None:
+        st.warning("Aucune prédiction à expliquer. Lancez d'abord une inférence.")
+        return
+
+    # RESET SI SAMPLE CHANGE
+    current_idx = st.session_state.sample_idx
+    if "last_sample_idx" not in st.session_state:
+        st.session_state.last_sample_idx = current_idx
+
+    if st.session_state.last_sample_idx != current_idx:
+        keys_to_reset = [
+            "var_figs", "var_names",
+            "ig_barplot", "ig_lineplot",
+            "perm_barplot", "perm_lineplot",
+            "general_explained"
+        ]
+        for k in keys_to_reset:
+            st.session_state.pop(k, None)
+        st.info("Échantillon changé, les explications doivent être recalculées.")
+
+    st.session_state.last_sample_idx = current_idx
+
+    times = st.session_state.times
+    time_predicted = times[st.session_state.sample_idx + st.session_state.T + st.session_state.step]
+
+    st.markdown(
+        f"""La prédiction suivante est expliquée :  
+        **Modèle :** {st.session_state.model}  
+        **Date :** {st.session_state.selected_dt}
+        """
+    )
+
+    st.subheader("Importance du temps et des variables pour la prédiction de cet échantillon.")
+
+    # Si on n'a jamais fait l'explication générale
+    if not st.session_state.get("general_explained", False):
+        run = st.button("Lancer l'explication générale")
+        st.warning("Très lent sur CPU. Préférez un GPU.")
+
+        if run:
+            st.success("Explication en cours...")
+            tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+
+            with st.spinner("Calcul des integrated gradients..."):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                ig_barplot, ig_lineplot, var_figs, var_names = integrated_gradients_for_one_sample(
+                    st.session_state.model,
+                    st.session_state.ckpt_path,
+                    st.session_state.dataset_path,
+                    st.session_state.lead,
+                    st.session_state.T,
+                    1,
+                    st.session_state.sample_idx,
+                    _progress_bar=progress_bar,
+                    _status_text=status_text
+                )
+                progress_bar.progress(100)
+                status_text.text("Explication terminée.")
+
+                st.session_state.ig_barplot = ig_barplot
+                st.session_state.ig_lineplot = ig_lineplot
+                st.session_state.var_figs = var_figs
+                st.session_state.var_names = var_names
+
+            run_perm = st.button("Lancer la permutation de svaraibles : TRES LENT")  
+            if run_perm:
+                with st.spinner("Calcul de la permutation de variables..."):
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    perm_barplot, perm_lineplot = feature_permutation_for_one_sample(
+                        st.session_state.model,
+                        st.session_state.ckpt_path,
+                        st.session_state.dataset_path,
+                        st.session_state.lead,
+                        st.session_state.T,
+                        1,
+                        st.session_state.sample_idx,
+                        _progress_bar=progress_bar,
+                        _status_text=status_text
+                    )
+                    progress_bar.progress(100)
+                    status_text.text("Permutation terminée.")
+
+                    st.session_state.perm_barplot = perm_barplot
+                    st.session_state.perm_lineplot = perm_lineplot
+
+            st.session_state.general_explained = True
+
+    # Affichage des figures si elles existent déjà
+    if st.session_state.get("ig_barplot") is not None and st.session_state.get("ig_lineplot") is not None:
+        tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+
+        with tab1:
+            col1, col2 = st.columns(2)
+            col1.pyplot(st.session_state.ig_barplot, caption="Importance temporelle")
+            col2.pyplot(st.session_state.ig_lineplot, caption="Importance des variables")
+
+        with tab2:
+            if run_perm:
+                col1, col2 = st.columns(2)
+                col1.pyplot(st.session_state.perm_barplot, caption="Permutation - temps")
+                col2.pyplot(st.session_state.perm_lineplot, caption="Permutation - variables")
+
+    # Section pour les figures détaillées par variable IG
+    st.subheader("Focus sur chaque variable")
+    if st.session_state.get("var_figs") is not None:
+        selected_var = st.selectbox("Choisissez une variable", st.session_state.var_names)
+        idx = st.session_state.var_names.index(selected_var)
+        st.pyplot(st.session_state.var_figs[idx])       
+
+
+import streamlit as st
+
+# --- Caches pour calculs lourds ---
+@st.cache_data(show_spinner=False)
+def cached_integrated_gradients(model, ckpt_path, dataset_path, lead, T, sample_idx):
+    try:
+        from time import sleep
+        # Simuler un calcul pour l'exemple
+        ig_barplot, ig_lineplot, var_figs, var_names = integrated_gradients_for_one_sample(
+            model, ckpt_path, dataset_path, lead, T, 1, sample_idx
+        )
+        return ig_barplot, ig_lineplot, var_figs, var_names
+    except Exception as e:
+        st.error(f"Erreur lors du calcul des IG : {e}")
+        return None, None, None, None
+
+@st.cache_data(show_spinner=False)
+def cached_feature_permutation(model, ckpt_path, dataset_path, lead, T, sample_idx):
+    try:
+        perm_barplot, perm_lineplot = feature_permutation_for_one_sample(
+            model, ckpt_path, dataset_path, lead, T, 1, sample_idx
+        )
+        return perm_barplot, perm_lineplot
+    except Exception as e:
+        st.error(f"Erreur lors du calcul de la permutation : {e}")
+        return None, None
+
+# --- Fonction refactorisée pour lancer IG ou permutation ---
+def run_explanation(type="IG"):
+    sample_idx = st.session_state.sample_idx
+    model = st.session_state.model
+    ckpt_path = st.session_state.ckpt_path
+    dataset_path = st.session_state.dataset_path
+    lead = st.session_state.lead
+    T = st.session_state.T
+
+    if type == "IG":
+        with st.spinner("Calcul des Integrated Gradients..."):
+            ig_barplot, ig_lineplot, var_figs, var_names = cached_integrated_gradients(
+                model, ckpt_path, dataset_path, lead, T, sample_idx
+            )
+            st.session_state.ig_barplot = ig_barplot
+            st.session_state.ig_lineplot = ig_lineplot
+            st.session_state.var_figs = var_figs
+            st.session_state.var_names = var_names
+            st.session_state.general_explained = True
+
+    elif type == "Permutation":
+        with st.spinner("Calcul de la permutation de variables..."):
+            perm_barplot, perm_lineplot = cached_feature_permutation(
+                model, ckpt_path, dataset_path, lead, T, sample_idx
+            )
+            st.session_state.perm_barplot = perm_barplot
+            st.session_state.perm_lineplot = perm_lineplot
+            st.session_state.run_perm = True
+
+# --- Page principale ---
+def page_explicabilite_locale():
+    st.header("Explicabilité locale : comprendre une prédiction")
+
+    # Vérification inférence
+    if not st.session_state.get("inference_done"):
+        st.warning("Aucune prédiction à expliquer. Lancez d'abord une inférence.")
+        return
+
+    # --- Bouton retour ---
+    if st.button("🔙 Retour à l'inférence"):
+        st.session_state.page = "Inférence"
+        st.experimental_rerun()
+        return
+
+    # --- Reset si sample change ---
+    current_idx = st.session_state.sample_idx
+    if "last_sample_idx" not in st.session_state:
+        st.session_state.last_sample_idx = current_idx
+
+    if st.session_state.last_sample_idx != current_idx:
+        keys_to_reset = [
+            "var_figs", "var_names",
+            "ig_barplot", "ig_lineplot",
+            "perm_barplot", "perm_lineplot",
+            "general_explained", "run_general", "run_perm"
+        ]
+        for k in keys_to_reset:
+            st.session_state.pop(k, None)
+        st.info("Échantillon changé, les explications doivent être recalculées.")
+
+    st.session_state.last_sample_idx = current_idx
+
+    # --- Infos prédiction ---
+    times = st.session_state.times
+    time_predicted = times[st.session_state.sample_idx + st.session_state.T + st.session_state.step]
+    st.markdown(f"**Modèle :** {st.session_state.model}  \n**Date sélectionnée :** {st.session_state.selected_dt}  \n**Date prédite :** {time_predicted}")
+
+    st.subheader("Importance du temps et des variables pour la prédiction")
+
+    # --- Boutons pour lancer les explications ---
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if not st.session_state.get("general_explained", False):
+            if st.button("Lancer l'explication générale (IG)"):
+                run_explanation("IG")
+
+    with col2:
+        if st.session_state.get("general_explained", False) and st.session_state.get("perm_barplot") is None:
+            if st.button("Lancer permutation variables (TRES LENT)"):
+                run_explanation("Permutation")
+
+    # --- Affichage des figures ---
+    if st.session_state.get("ig_barplot") is not None and st.session_state.get("ig_lineplot") is not None:
+        tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+
+        with tab1:
+            col1, col2 = st.columns(2)
+            col1.pyplot(st.session_state.ig_barplot)
+            col1.caption("Importance temporelle")
+            col2.pyplot(st.session_state.ig_lineplot)
+            col2.caption("Importance des variables")
+
+        with tab2:
+            if st.session_state.get("perm_barplot") is not None and st.session_state.get("perm_lineplot") is not None:
+                col1, col2 = st.columns(2)
+                col1.pyplot(st.session_state.perm_barplot, caption="Permutation - temps")
+                col2.pyplot(st.session_state.perm_lineplot, caption="Permutation - variables")
+                
+
+    # --- Focus sur chaque variable IG ---
+    st.subheader("Focus sur chaque variable")
+    if st.session_state.get("var_figs") and st.session_state.get("var_names"):
+        selected_var = st.selectbox("Choisissez une variable", st.session_state.var_names)
+        idx = st.session_state.var_names.index(selected_var)
+        st.pyplot(st.session_state.var_figs[idx])
+    else:
+        st.info("Les variables IG ne sont pas encore calculées.")
+
+
+def page_explicabilite_globale():
+    st.title("Explicabilité globale des modèles de prévision")
+    # lat, lon = st.session_state.get("clicked_pixel", (None, None))
+    # if lat is None:
+    #     st.warning("Aucun pixel sélectionné")
+    #     return
+
+    # st.header(f"Explicabilité du pixel Lat={lat:.2f}, Lon={lon:.2f}")
+
+    # st.write("Visualisation explicabilité à implémenter")
+
+    st.markdown("""Une analyse des modèles implémentés a été réalisée, afin de pouvoir les expliquer.
+    Nous avons mis en place plusieurs méthodes d'explicabilité globale :  
+    - étude de l'importance des variables (par feature permutation et integrated gradients)  
+    -  
+    Une présentation des résultats obtenus est dans cette page.""")
+
+    st.header("Importance des variables")
+
+    st.write("Décrire chacune des méthodes IG et Feature Permutation.")
+
+    st.subheader("Modèle ConvLSTM")
+
+    tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+    app_dir = os.path.dirname(__file__)
+
+    with tab1:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_ig_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance temporelle pour le ConvLSTM")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_ig_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance des variables pour le ConvLSTM")
+
+    with tab2:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_fp_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance temporelle pour le ConvLSTM")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_fp_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance des variables pour le ConvLSTM")
+
+
+    st.subheader("Modèle U-Net")
+
+    tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+
+    with tab1:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_ig_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance temporelle pour le U-Net")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_ig_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance des variables pour le U-Net")
+
+    with tab2:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_fp_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance temporelle pour le U-Net")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_fp_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance des variables pour le U-Net")
+
 
 def page_explicabilite_globale():
     st.write("Visualisation explicabilité à implémenter")
@@ -780,8 +1276,8 @@ def main():
     # Affichage du sidebar
     page_sidebar = st.sidebar.selectbox(
         "Navigation",
-        ["Accueil", "Inférence", "Explicabilité"],
-        index=["Accueil", "Inférence", "Explicabilité"].index(st.session_state.page)
+        ["Accueil", "Inférence", "Explicabilité Locale", "Explicabilité Globale"],
+        index=["Accueil", "Inférence", "Explicabilité Locale", "Explicabilité Globale"].index(st.session_state.page)
     )
 
     # mettre à jour session_state seulement si l'utilisateur a changé le selectbox
@@ -792,9 +1288,9 @@ def main():
         page_home()
     elif st.session_state.page == "Inférence":
         page_inference()
-    elif st.session_state.page == "Explicabilité locale":
+    elif st.session_state.page == "Explicabilité Locale":
         page_explicabilite_locale()
-    elif st.session_state.page == "Explicabilité globale":
+    elif st.session_state.page == "Explicabilité Globale":
         page_explicabilite_globale()
 
 

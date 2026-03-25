@@ -21,7 +21,7 @@ def reshape_for_model(X_flat, B=1, T=8, C=33, H=149, W=221):
 
 
 def permutation_importance_batch(model, X_flat, y_flat, metric, T=8, C=33, H=149, W=221,
-                                 batch_size_features=16, n_repeats=5):
+                                 batch_size_features=16, n_repeats=5, progress_bar=None, status_text=None):
     """
     Calcul des importances par permutation en batch, avec plusieurs répétitions.
     """
@@ -41,6 +41,11 @@ def permutation_importance_batch(model, X_flat, y_flat, metric, T=8, C=33, H=149
 
     for repeat in range(n_repeats):
         print(f"Repeat {repeat+1}/{n_repeats}")
+        if progress_bar is not None:
+            progress = int((repeat + 1) / n_repeats * 100)
+            progress_bar.progress(progress)
+        if status_text is not None:
+            status_text.text(f"Calcul variable {repeat+1}/{n_repeats}")
         for start in range(0, n_features, batch_size_features):
             end = min(start + batch_size_features, n_features)
             batch_feats = end - start
