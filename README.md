@@ -102,7 +102,7 @@ It permits you to
 
 Here is a quick demo of the different functionalities that the demonstrator offers :
 <p align="center">
-  <video src="demonstrator/demo_demoonstrator.webm" width="600" controls autoplay loop muted>
+  <video src="./demonstrator/demo_demoonstrator.webm" width="600" controls autoplay loop muted>
   </video>
 </p>
 
