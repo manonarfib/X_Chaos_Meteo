@@ -3,7 +3,7 @@
 </h2>
 
 <p align="center">
-  <video src="era5_visuals/figures/gifs/alex_europe.gif" width="400">
+  <img src="era5_visuals/figures/gifs/alex_europe.gif" width="400">
 </p>
 
 
@@ -102,7 +102,7 @@ It permits you to
 
 Here is a quick demo of the different functionalities that the demonstrator offers :
 <p align="center">
-  <video src="./demonstrator/demo_demoonstrator.webm" width="600" controls autoplay loop muted>
+  <video src="demonstrator/demo_demoonstrator.webm" width="600" autoplay loop muted playsinline controls>
   </video>
 </p>
 
