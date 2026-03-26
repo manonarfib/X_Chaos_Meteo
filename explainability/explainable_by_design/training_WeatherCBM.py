@@ -1,0 +1,334 @@
+import time
+import os
+import csv
+import random
+from dataclasses import dataclass
+from typing import Tuple
+
+import numpy as np
+import pandas as pd
+import torch
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
+
+from dataclasses import asdict
+import pprint
+
+from models.utils.losses import WeightedMSELoss
+from models.utils.ERA5_dataset_from_local import ERA5Dataset
+from explainability.explainable_by_design.WeatherCBM import WeatherCBM
+
+
+
+# Configuration
+
+@dataclass
+class Config:
+    # Data
+    train_dataset_path: str = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_train.zarr"
+    val_dataset_path: str = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
+    T: int = 8
+    lead: int = 1
+    batch_size: int = 16
+    without_precip: bool = False # put to False for og config 
+    max_lead: int = 1 # put to 1 if you want to only predict at one lead times, 8 to predict up to 48h
+    
+    # Steps
+    number_of_days_for_gradient_acc = 30 # 1 mois
+    number_of_days_before_eval = 730 # 365*2 = 2 ans
+
+    # Training
+    n_epochs: int = 6
+    lr: float = 1e-3
+    loss_type: str = "mse"
+
+    # Model
+    hidden_channels: Tuple[int, int] = (32, 64)
+    kernel_size: int = 3
+    n_concepts: int = 10
+
+    # Logging / checkpoint
+    num_exp=0
+    checkpoint_dir: str = f"checkpoints/weather_cbm/exp_{num_exp}"
+    train_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/train_log.csv"
+    val_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/validation_log.csv"
+    
+    # Misc
+    seed: int = 42
+
+
+# Utils
+
+def set_seed(seed: int):
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def get_device() -> torch.device:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device used : {device}")
+    return device
+
+
+# Loss
+
+def compute_loss(output, target, alpha, l1_weight=1e-4):
+    """
+    output : prédiction rain (B,1,H,W)
+    target : pluie observée (B,1,H,W)
+    alpha  : cartes de concepts (B,K,H,W)
+    l1_weight : coefficient de régularisation L1
+    """
+    loss_pred = WeightedMSELoss()(output, target)# Main part : MSE loss
+    loss_l1 = l1_weight * alpha.abs().mean()# Lasso penalisation on the concepts
+    loss = loss_pred + loss_l1
+
+    return loss
+
+
+# Data
+class SingleBatchDataset(Dataset):
+    def __init__(self, batch):
+        self.X, self.y, *rest = batch
+        self.rest = rest  # au cas où (idx_, etc.)
+
+    def __len__(self):
+        return self.X.shape[0]
+
+    def __getitem__(self, idx):
+        if self.rest:
+            return self.X[idx], self.y[idx], *(r[idx] for r in self.rest)
+        else:
+            return self.X[idx], self.y[idx]
+
+def create_dataloaders(cfg: Config):
+    print("\n[STEP] Dataloader creation...")
+    t0 = time.time()
+
+    train_dataset = ERA5Dataset(cfg.train_dataset_path, T=cfg.T, lead=cfg.lead, without_precip=cfg.without_precip, max_lead=cfg.max_lead)
+    val_dataset = ERA5Dataset(cfg.val_dataset_path, T=cfg.T, lead=cfg.lead, without_precip=cfg.without_precip, max_lead=cfg.max_lead)
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=cfg.batch_size, shuffle=True, num_workers=0
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=cfg.batch_size, shuffle=False, num_workers=0
+    )
+    
+    # ---- Extraire le premier batch ----
+    train_batch = next(iter(train_loader))
+    val_batch = next(iter(val_loader))
+
+    # ---- Créer des datasets mono-batch ----
+    train_single_dataset = SingleBatchDataset(train_batch)
+    val_single_dataset = SingleBatchDataset(val_batch)
+
+    # ---- DataLoaders compatibles avec ton fit() ----
+    train_loader_one_batch = DataLoader(
+        train_single_dataset,
+        batch_size=cfg.batch_size,
+        shuffle=False
+    )
+
+    val_loader_one_batch = DataLoader(
+        val_single_dataset,
+        batch_size=cfg.batch_size,
+        shuffle=False
+    )
+
+    input_vars = list(train_dataset.X.coords["channel"].values)
+    print(f"Number of input vars : {len(input_vars)}")
+    print(f"Number of batches per epoch : {len(train_loader)}")
+    print(f"[DONE] DataLoader created in {time.time() - t0:.1f} s")
+
+    # Warm-up
+    X, y, _ = next(iter(train_loader))
+    print(f"[WARMUP] X.shape : {X.shape}, y.shape : {y.shape}")
+
+    return train_loader, val_loader, train_dataset, input_vars
+
+
+# Model / Optim
+
+def build_model(cfg: Config, input_channels: int, device: torch.device, output_size=1):
+    print("\n[STEP] Initialisation of PrecipConvLSTM...")
+    t0 = time.time()
+
+    model = WeatherCBM(
+        input_channels=input_channels,
+        hidden_channels=list(cfg.hidden_channels),
+        kernel_size=cfg.kernel_size,
+        output_size=output_size,
+        n_concepts=cfg.n_concepts
+    ).to(device)
+
+    print(
+        "Number of parameters of the model :",
+        sum(p.numel() for p in model.parameters() if p.requires_grad),
+    )
+    print(f"[DONE] Model initialized in {time.time() - t0:.2f} s")
+    return model
+
+
+def build_optimizer(model, cfg: Config):
+    optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.1, patience=3
+    )
+    return optimizer, scheduler
+
+
+# Checkpoints / logs
+
+def init_csv(path, header):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if not os.path.exists(path):
+        with open(path, "w", newline="") as f:
+            csv.writer(f).writerow(header)
+
+
+def save_checkpoint(path, epoch, model, optimizer, scheduler):
+    torch.save(
+        {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict()
+        },
+        path,
+    )
+
+
+def load_last_checkpoint(path, model, optimizer, scheduler, device):
+    if not os.path.exists(path):
+        print("[CHECKPOINT] No checkpoint found, training starting at the beginning.")
+        return 1
+
+    checkpoint = torch.load(path, map_location=device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+    start_epoch = checkpoint["epoch"] + 1
+    print(f"[CHECKPOINT] Loaded from {path}, starting again at epoch {start_epoch}")
+    return start_epoch
+
+
+# Validation
+
+def run_validation(model, val_loader, device):
+    model.eval()
+    total_loss = 0.0
+
+    with torch.no_grad():
+        for X, y, _ in tqdm(val_loader, desc="Validation", leave=True):
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+
+            y_hat, alpha = model(X)
+            y_hat=y_hat.squeeze(1)
+            loss = compute_loss(y_hat, y, alpha, l1_weight=1e-4)
+            total_loss += loss.item()
+
+    return total_loss / len(val_loader)
+
+def print_config(cfg: Config):
+    print("\n" + "=" * 80)
+    print("TRAINING CONFIGURATION")
+    print("=" * 80)
+    pprint.pprint(asdict(cfg), sort_dicts=False)
+    print("=" * 80 + "\n")
+
+# Training
+
+def train(cfg: Config):
+    print_config(cfg)
+    set_seed(cfg.seed)
+    device = get_device()
+
+    train_loader, val_loader, train_dataset, input_vars = create_dataloaders(cfg)
+    model = build_model(cfg, len(input_vars), device, output_size=cfg.max_lead)
+    optimizer, scheduler = build_optimizer(model, cfg)
+
+    init_csv(cfg.train_csv, ["epoch", "batch_idx", "loss"])
+    init_csv(cfg.val_csv, ["epoch", "batch_idx", "eval_type", "loss"])
+
+    accumulation_steps = (cfg.number_of_days_for_gradient_acc*4) // cfg.batch_size
+    evaluation_steps = (cfg.number_of_days_before_eval*4) // cfg.batch_size
+    print(f"Accumulation steps : {accumulation_steps}")
+
+    last_checkpoint = os.path.join(cfg.checkpoint_dir, "checkpoint_last.pt")
+    start_epoch = load_last_checkpoint(last_checkpoint, model, optimizer, scheduler, device)
+
+    previous_val_loss = np.inf
+
+    print("\n[TRAIN] Training start...")
+    t_train = time.time()
+
+    for epoch in range(start_epoch, cfg.n_epochs + 1):
+        model.train()
+        optimizer.zero_grad()
+
+        epoch_loss = 0.0
+        acc_loss = 0.0
+
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.n_epochs}")
+        for batch_idx, (X, y, i) in enumerate(pbar):
+            print(f"event : training start, batch : {batch_idx}")
+            t0 = time.time()
+
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+
+            y_hat, alpha = model(X)
+            y_hat=y_hat.squeeze(1)
+            loss = compute_loss(y_hat, y, alpha, l1_weight=1e-4)
+
+            (loss / accumulation_steps).backward()
+            epoch_loss += loss.item()
+            acc_loss += loss / accumulation_steps
+
+            if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
+                optimizer.step()
+                optimizer.zero_grad()
+
+                with open(cfg.train_csv, "a", newline="") as f:
+                    csv.writer(f).writerow([epoch, batch_idx, acc_loss.item()])
+
+                acc_loss = 0.0
+
+            if (batch_idx + 1) % evaluation_steps == 0 or (batch_idx + 1) == len(train_loader):
+                val_loss = run_validation(model, val_loader, device)
+
+                if val_loss < previous_val_loss:
+                    save_checkpoint(
+                        f"{cfg.checkpoint_dir}/best_checkpoint_epoch{epoch}_batch{batch_idx}.pt",
+                        epoch,
+                        model,
+                        optimizer,
+                        scheduler
+                    )
+                    previous_val_loss = val_loss
+
+                with open(cfg.val_csv, "a", newline="") as f:
+                    csv.writer(f).writerow([epoch, batch_idx, "val", val_loss])
+
+                scheduler.step(val_loss)
+                model.train()
+
+            print(f"event : training batch end, duration : {time.time() - t0:.2f}s")
+
+        avg_loss = epoch_loss / len(train_loader)
+        print(f">>> Epoch {epoch} terminé - loss moyenne : {avg_loss:.4e} - lr : {optimizer.param_groups[0]['lr']}")
+
+        save_checkpoint(f"{cfg.checkpoint_dir}/epoch{epoch}_full.pt", epoch, model, optimizer, scheduler)
+        save_checkpoint(last_checkpoint, epoch, model, optimizer, scheduler)
+
+    print(f"[TRAIN] Training finished in {time.time() - t_train:.1f}s")
+
+
+
+if __name__ == "__main__":
+    cfg = Config()
+    train(cfg)

@@ -9,6 +9,7 @@ import torch.nn as nn
 from models.utils.ERA5_dataset_from_local import  ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
 from models.unet.model_without_collapse import WFUNet_with_train
+from explainability.explainable_by_design.WeatherCBM import WeatherCBM
 
 import torch
 
@@ -22,23 +23,32 @@ def build_model(model_type: str, C_in: int, T: int, device: torch.device, max_le
             output_size=max_lead
         ).to(device)
         return model
+    elif model_type=="weathercbm":
+        model = WeatherCBM(
+            input_channels=C_in,
+            hidden_channels=[32, 64],
+            kernel_size=3,
+            output_size=max_lead,
+            n_concepts=10
+        ).to(device)
+        return model
     elif model_type == "unet":
         # signature in your commented line: WFUNet_with_train(8,149,221,33,1, 8,32,0)
         # If you change T/H/W/C_in etc., update these args accordingly.
         model = WFUNet_with_train(T, 149, 221, C_in, max_lead, 8, 32, 0).to(device)
         return model
     else:
-        raise ValueError(f"Unknown MODEL_TYPE='{model_type}'. Use 'convlstm' or 'unet'.")
+        raise ValueError(f"Unknown MODEL_TYPE='{model_type}'. Use 'convlstm', 'unet' or 'weathercbm'.")
 
 if __name__=='__main__':
 
-    MODEL_TYPE = "unet" 
+    MODEL_TYPE = "weathercbm" 
     LEAD=1
     T=8
     BATCH_SIZE=16
     DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
     MAX_LEAD=1
-    CKPT_PATH="checkpoints/run_144946/best_checkpoint_epoch3_batch_idx5399.pt"
+    CKPT_PATH="checkpoints/weather_cbm/exp_0/epoch6_full.pt"
     WITHOUT_PRECIP=False
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -74,13 +84,20 @@ if __name__=='__main__':
             if MAX_LEAD==1:
                 X_batch = X_batch.to(device).float()
                 y_batch = y_batch.to(device).float()
-                
-                y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+                if MODEL_TYPE=="weathercbm":
+                    y_hat, alpha=model(X_batch)
+                    y_hat=y_hat.squeeze(1)
+                else :
+                    y_hat = model(X_batch).squeeze(1)  # (B,H,W)
                 y_hat = torch.clamp(y_hat, min=0.0)
             else:
                 X_batch = X_batch.to(device).float()
                 y_batch = y_batch[:, -1, :, :].to(device).float() # sélectionne le temps 48h
-                y_hat = model(X_batch).squeeze(1)  # (B,H,W)
+                if MODEL_TYPE=="weathercbm":
+                    y_hat, alpha=model(X_batch)
+                    y_hat=y_hat.squeeze(1)
+                else :
+                    y_hat = model(X_batch).squeeze(1)  # (B,H,W)
                 y_hat = y_hat[:, -1, :, :]
                 y_hat = torch.clamp(y_hat, min=0.0)
             
