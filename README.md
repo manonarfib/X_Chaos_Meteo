@@ -100,7 +100,10 @@ You can  access a streamlit demonstrator by running :
 
 It permits you to 
 
-Mettre une vidéo du démonstrateur.
+Here is a quick demo of the different functionalities that the demonstrator offers :
+<p align="center">
+  <img src="demonstrator/demo_demonstrator_xchaos.mp4" width="600">
+</p>
 
 
 ## 🤝 Authors
