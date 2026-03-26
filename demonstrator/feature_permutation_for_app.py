@@ -41,7 +41,8 @@ def lineplot_mean_std(mean_vals, std_vals, out_path,
                            xlabel="Temps",
                            ylabel="Importance",
                            xtick_labels=None):
-
+    print("ligne 44")
+    print(mean_vals)
     mean_vals = np.asarray(mean_vals)
     std_vals = np.asarray(std_vals)
     x = np.arange(len(mean_vals))
@@ -52,8 +53,9 @@ def lineplot_mean_std(mean_vals, std_vals, out_path,
                     mean_vals + std_vals,
                     alpha=0.25,
                     color='mediumseagreen')
+    print("ligne 55")
     if xtick_labels is not None:
-        assert len(xtick_labels) == len(x), "xtick_labels doit avoir la même longueur que mean_vals"
+        # assert len(xtick_labels) == len(x), "xtick_labels doit avoir la même longueur que mean_vals"
         ax.set_xticks(x)
         ax.set_xticklabels(xtick_labels)
     ax.set_title(title)
@@ -63,7 +65,7 @@ def lineplot_mean_std(mean_vals, std_vals, out_path,
     plt.tight_layout()
     return fig
 
-def feature_permutation_for_one_sample(MODEL_TYPE, CKPT_PATH, DATASET_PATH, LEAD, T, MAX_LEAD, IDX, WITHOUT_PRECIP=False, BATCH_SIZE=16, progress_bar = None, status_text = None):
+def feature_permutation_for_one_sample(MODEL_TYPE, CKPT_PATH, DATASET_PATH, LEAD, T, MAX_LEAD, IDX, WITHOUT_PRECIP=False, BATCH_SIZE=16, _progress_callback = None, status_text = None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     test_dataset = ERA5Dataset(DATASET_PATH, T=T, lead=LEAD, without_precip=WITHOUT_PRECIP, max_lead=MAX_LEAD)
@@ -91,10 +93,9 @@ def feature_permutation_for_one_sample(MODEL_TYPE, CKPT_PATH, DATASET_PATH, LEAD
         T=T, C=C, H=H, W=W,
         batch_size_features=16,
         n_repeats=5,
-        progress_bar=progress_bar,
+        progress_callback=_progress_callback,
         status_text=status_text
     )
-
     all_importances.append(imp)
 
     all_importances = np.stack(all_importances)   # shape = (N, T*C)
@@ -107,32 +108,27 @@ def feature_permutation_for_one_sample(MODEL_TYPE, CKPT_PATH, DATASET_PATH, LEAD
     std_var = np.zeros_like(imp_var)
 
     labels_var = input_vars
-
     barplot = barplot_mean_std(
         mean_var,
         std_var,
         labels_var,
         f"explainability/features_permutation/figures/importance_per_variable_{MODEL_TYPE}_new.png",
         title="Permutation importance — aggregated per variable",
-        top_k=20
+        top_k=15
     )
-
     imp_time = imp_tc.mean(axis=1)   # (N, T)
-
-    mean_time = imp_time.mean(axis=0)
-    std_time  = imp_time.std(axis=0)
+    # mean_time = imp_time.mean(axis=0)
+    # std_time  = imp_time.std(axis=0)
     time_labels = ["t-42h", "t-36h", "t-30h", "t-24h", "t-18h", "t-12h", "t-6h", "t"]
-
     lineplot = lineplot_mean_std(
-        mean_time,
-        std_time,
+        imp_time,
+        0,
         f"explainability/features_permutation/figures/importance_per_time_{MODEL_TYPE}_new.png",
         title="Permutation importance — aggregated per timestep",
         xlabel="Time",
         ylabel="ΔMSE",
         xtick_labels=time_labels
     )
-
     return barplot, lineplot
 
 
@@ -257,117 +253,192 @@ def plot_tp_attr_contour(
     return fig
 
 
+# def plot_tp_var_times_attr_contour(
+#     tp_map: np.ndarray,
+#     var_maps: list,           # list of 2D arrays [t=7, t=6, t=5]
+#     var_name: str,
+#     attr_map: np.ndarray,
+#     europe_mask: np.ndarray,
+#     title: str,
+#     tp_title: str,
+#     attr_title: str,
+#     var_titles: list,         # ["var t=7", "var t=6", "var t=5"]
+#     contour_q: float = 0.95,
+#     region=(-12.5, 42.5, 35, 72),
+#     var_cmap: str = "cividis",
+# ):
+#     """
+#     Layout:
+#       Col 1: TP(t=7)
+#       Col 2: Variable at t=7,6,5 stacked vertically
+#       Col 3: Attribution (for variable)
+#       Col 4: TP(t=7) + contour(top-5% attribution)
+#     """
+
+#     # Masks (NaN outside Europe)
+#     tp_m = _apply_mask(tp_map, europe_mask)
+#     var_ms = [_apply_mask(v, europe_mask) for v in var_maps]
+#     at_m = _apply_mask(attr_map, europe_mask)
+
+#     blues = _cmap_with_white_bad("Blues")
+#     reds = _cmap_with_white_bad("Reds")
+#     varcmap = _cmap_with_white_bad(var_cmap)
+
+#     lon_min, lon_max, lat_min, lat_max = region
+#     extent = [lon_min, lon_max, lat_min, lat_max]
+#     proj = ccrs.PlateCarree()
+
+#     # GridSpec: 3 rows, 4 columns
+#     # Col 0: tp spans 3 rows
+#     # Col 1: var t=7 / t=6 / t=5 (3 rows)
+#     # Col 2: attribution spans 3 rows
+#     # Col 3: tp+contour spans 3 rows
+#     fig = plt.figure(figsize=(20, 9))
+#     gs = fig.add_gridspec(nrows=3, ncols=4, width_ratios=[1.0, 1.0, 1.0, 1.0], wspace=0.25, hspace=0.15)
+
+#     ax_tp   = fig.add_subplot(gs[:, 0], projection=proj)
+#     ax_v7   = fig.add_subplot(gs[0, 1], projection=proj)
+#     ax_v6   = fig.add_subplot(gs[1, 1], projection=proj)
+#     ax_v5   = fig.add_subplot(gs[2, 1], projection=proj)
+#     ax_attr = fig.add_subplot(gs[:, 2], projection=proj)
+#     ax_tp_c = fig.add_subplot(gs[:, 3], projection=proj)
+
+#     axes = [ax_tp, ax_v7, ax_v6, ax_v5, ax_attr, ax_tp_c]
+
+#     # Map features
+#     for ax in axes:
+#         ax.set_extent(extent, crs=proj)
+#         ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=0.8)
+#         ax.add_feature(cfeature.BORDERS.with_scale("50m"), linewidth=0.6)
+#         gl = ax.gridlines(draw_labels=False, linestyle="--", linewidth=0.35)
+#         gl.right_labels = False
+#         gl.top_labels = False
+
+#     # --- Col 1: TP ---
+#     im_tp = ax_tp.imshow(tp_m, cmap=blues, origin="upper", extent=extent, transform=proj)
+#     ax_tp.set_title(tp_title)
+#     plt.colorbar(im_tp, ax=ax_tp, fraction=0.046, pad=0.02)
+
+#     # --- Col 2: Variable times ---
+#     ims = []
+#     for ax, vm, vt in zip([ax_v7, ax_v6, ax_v5], var_ms, var_titles):
+#         imv = ax.imshow(vm, cmap=varcmap, origin="upper", extent=extent, transform=proj)
+#         ax.set_title(vt)
+#         ims.append(imv)
+
+#     # One shared colorbar for the 3 var maps (using the first one)
+#     plt.colorbar(ims[0], ax=[ax_v7, ax_v6, ax_v5], fraction=0.046, pad=0.02)
+
+#     # --- Col 3: Attribution ---
+#     im_at = ax_attr.imshow(at_m, cmap=reds, origin="upper", extent=extent, transform=proj)
+#     ax_attr.set_title(attr_title)
+#     plt.colorbar(im_at, ax=ax_attr, fraction=0.046, pad=0.02)
+
+#     # --- Col 4: TP + contour ---
+#     ax_tp_c.imshow(tp_m, cmap=blues, origin="upper", extent=extent, transform=proj)
+
+#     flat = at_m[np.isfinite(at_m)]
+#     if flat.size > 0:
+#         thr = np.quantile(flat, contour_q)
+#         contour_mask = np.zeros_like(at_m, dtype=np.float32)
+#         contour_mask[np.isfinite(at_m) & (at_m >= thr)] = 1.0
+
+#         # contour in lon/lat to avoid inversion
+#         lons = np.linspace(lon_min, lon_max, contour_mask.shape[1])
+#         lats = np.linspace(lat_max, lat_min, contour_mask.shape[0])
+#         Lon, Lat = np.meshgrid(lons, lats)
+
+#         ax_tp_c.contour(
+#             Lon, Lat, contour_mask,
+#             levels=[0.5],
+#             colors="red",
+#             linewidths=1.2,
+#             transform=proj,
+#         )
+
+#     ax_tp_c.set_title(f"{tp_title} + top-{int((1-contour_q)*100)}% attr contour")
+
+#     fig.suptitle(f"{title}\nVariable: {var_name}", y=0.98) 
+#     # plt.tight_layout() 
+#     return fig
+
 def plot_tp_var_times_attr_contour(
     tp_map: np.ndarray,
-    var_maps: list,           # list of 2D arrays [t=7, t=6, t=5]
+    var_maps: list,
     var_name: str,
     attr_map: np.ndarray,
     europe_mask: np.ndarray,
     title: str,
     tp_title: str,
     attr_title: str,
-    var_titles: list,         # ["var t=7", "var t=6", "var t=5"]
+    var_titles: list,
     contour_q: float = 0.95,
     region=(-12.5, 42.5, 35, 72),
     var_cmap: str = "cividis",
 ):
-    """
-    Layout:
-      Col 1: TP(t=7)
-      Col 2: Variable at t=7,6,5 stacked vertically
-      Col 3: Attribution (for variable)
-      Col 4: TP(t=7) + contour(top-5% attribution)
-    """
-
-    # Masks (NaN outside Europe)
+    # --- Préparation commune ---
     tp_m = _apply_mask(tp_map, europe_mask)
     var_ms = [_apply_mask(v, europe_mask) for v in var_maps]
     at_m = _apply_mask(attr_map, europe_mask)
 
     blues = _cmap_with_white_bad("Blues")
     reds = _cmap_with_white_bad("Reds")
-    varcmap = _cmap_with_white_bad(var_cmap)
+    var_cm = _cmap_with_white_bad(var_cmap)
 
     lon_min, lon_max, lat_min, lat_max = region
     extent = [lon_min, lon_max, lat_min, lat_max]
     proj = ccrs.PlateCarree()
 
-    # GridSpec: 3 rows, 4 columns
-    # Col 0: tp spans 3 rows
-    # Col 1: var t=7 / t=6 / t=5 (3 rows)
-    # Col 2: attribution spans 3 rows
-    # Col 3: tp+contour spans 3 rows
-    fig = plt.figure(figsize=(20, 9))
-    gs = fig.add_gridspec(nrows=3, ncols=4, width_ratios=[1.0, 1.0, 1.0, 1.0], wspace=0.25, hspace=0.15)
-
-    ax_tp   = fig.add_subplot(gs[:, 0], projection=proj)
-    ax_v7   = fig.add_subplot(gs[0, 1], projection=proj)
-    ax_v6   = fig.add_subplot(gs[1, 1], projection=proj)
-    ax_v5   = fig.add_subplot(gs[2, 1], projection=proj)
-    ax_attr = fig.add_subplot(gs[:, 2], projection=proj)
-    ax_tp_c = fig.add_subplot(gs[:, 3], projection=proj)
-
-    axes = [ax_tp, ax_v7, ax_v6, ax_v5, ax_attr, ax_tp_c]
-
-    # Map features
-    for ax in axes:
+    def create_base_ax(figsize=(5, 5)):
+        fig, ax = plt.subplots(figsize=figsize, subplot_kw={'projection': proj})
         ax.set_extent(extent, crs=proj)
         ax.add_feature(cfeature.COASTLINE.with_scale("50m"), linewidth=0.8)
         ax.add_feature(cfeature.BORDERS.with_scale("50m"), linewidth=0.6)
-        gl = ax.gridlines(draw_labels=False, linestyle="--", linewidth=0.35)
-        gl.right_labels = False
-        gl.top_labels = False
+        gl = ax.gridlines(draw_labels=False, linestyle="--", linewidth=0.3)
+        return fig, ax
 
-    # --- Col 1: TP ---
+    # --- 1. Figure TP Seule ---
+    fig_tp, ax_tp = create_base_ax()
     im_tp = ax_tp.imshow(tp_m, cmap=blues, origin="upper", extent=extent, transform=proj)
     ax_tp.set_title(tp_title)
     plt.colorbar(im_tp, ax=ax_tp, fraction=0.046, pad=0.02)
 
-    # --- Col 2: Variable times ---
-    ims = []
-    for ax, vm, vt in zip([ax_v7, ax_v6, ax_v5], var_ms, var_titles):
-        imv = ax.imshow(vm, cmap=varcmap, origin="upper", extent=extent, transform=proj)
+    # --- 2. Figure Variables (Vertical Stack) ---
+    # On garde les 3 temps ensemble pour la cohérence de la colorbar
+    fig_vars, axes_v = plt.subplots(nrows=3, ncols=1, figsize=(5, 12), subplot_kw={'projection': proj})
+    ims_v = []
+    for ax, vm, vt in zip(axes_v, var_ms, var_titles):
+        ax.set_extent(extent, crs=proj)
+        ax.add_feature(cfeature.COASTLINE, linewidth=0.5)
+        imv = ax.imshow(vm, cmap=var_cm, origin="upper", extent=extent, transform=proj)
         ax.set_title(vt)
-        ims.append(imv)
+        ims_v.append(imv)
+    plt.colorbar(ims_v[0], ax=axes_v.tolist(), fraction=0.046, pad=0.04)
 
-    # One shared colorbar for the 3 var maps (using the first one)
-    plt.colorbar(ims[0], ax=[ax_v7, ax_v6, ax_v5], fraction=0.046, pad=0.02)
-
-    # --- Col 3: Attribution ---
+    # --- 3. Figure Attribution ---
+    fig_attr, ax_attr = create_base_ax()
     im_at = ax_attr.imshow(at_m, cmap=reds, origin="upper", extent=extent, transform=proj)
     ax_attr.set_title(attr_title)
     plt.colorbar(im_at, ax=ax_attr, fraction=0.046, pad=0.02)
 
-    # --- Col 4: TP + contour ---
-    ax_tp_c.imshow(tp_m, cmap=blues, origin="upper", extent=extent, transform=proj)
-
+    # --- 4. Figure TP + Contour Attribution ---
+    fig_cont, ax_cont = create_base_ax()
+    ax_cont.imshow(tp_m, cmap=blues, origin="upper", extent=extent, transform=proj)
+    
     flat = at_m[np.isfinite(at_m)]
     if flat.size > 0:
         thr = np.quantile(flat, contour_q)
-        contour_mask = np.zeros_like(at_m, dtype=np.float32)
-        contour_mask[np.isfinite(at_m) & (at_m >= thr)] = 1.0
-
-        # contour in lon/lat to avoid inversion
-        lons = np.linspace(lon_min, lon_max, contour_mask.shape[1])
-        lats = np.linspace(lat_max, lat_min, contour_mask.shape[0])
+        lons = np.linspace(lon_min, lon_max, at_m.shape[1])
+        lats = np.linspace(lat_max, lat_min, at_m.shape[0])
         Lon, Lat = np.meshgrid(lons, lats)
+        ax_cont.contour(Lon, Lat, at_m, levels=[thr], colors="red", linewidths=1.5, transform=proj)
+    
+    ax_cont.set_title(f"Focus : {var_name}\n(Contour top {int((1-contour_q)*100)}% Attr)")
 
-        ax_tp_c.contour(
-            Lon, Lat, contour_mask,
-            levels=[0.5],
-            colors="red",
-            linewidths=1.2,
-            transform=proj,
-        )
+    return [fig_tp, fig_vars, fig_attr, fig_cont]
 
-    ax_tp_c.set_title(f"{tp_title} + top-{int((1-contour_q)*100)}% attr contour")
-
-    fig.suptitle(f"{title}\nVariable: {var_name}", y=0.98) 
-    plt.tight_layout() 
-    return fig
-
-@st.cache_resource
-def integrated_gradients_for_one_sample(MODEL_TYPE, CKPT_PATH, DATASET_PATH, LEAD, T, MAX_LEAD, IDX, WITHOUT_PRECIP=False, BATCH_SIZE=16, _progress_bar = None, _status_text=None):
+# @st.cache_resource
+def integrated_gradients_for_one_sample(MODEL_TYPE, CKPT_PATH, DATASET_PATH, LEAD, T, MAX_LEAD, IDX, WITHOUT_PRECIP=False, BATCH_SIZE=16, _progress_callback = None, _status_text=None):
 
     METHOD = "ig"
     LOSS_NAME= "MSE"
@@ -422,7 +493,7 @@ def integrated_gradients_for_one_sample(MODEL_TYPE, CKPT_PATH, DATASET_PATH, LEA
         steps=IG_STEPS,
         target="region_sum",
         region_mask=region_mask,
-        progress_bar=_progress_bar,
+        progress_callback=_progress_callback,
         status_text=_status_text
     )
  

@@ -474,7 +474,7 @@ def integrated_gradients(model, x, baseline, steps=30, target="region_sum", regi
     attr = (x - baseline) * avg_grad
     return attr
 
-def integrated_gradients_with_progress(model, x, baseline, steps=30, target="region_sum", region_mask=None, progress_bar=None, status_text=None):
+def integrated_gradients_with_progress(model, x, baseline, steps=30, target="region_sum", region_mask=None, progress_callback=None, status_text=None):
     """
     x: (B,T,C,H,W)
     baseline: (B,T,C,H,W)
@@ -492,9 +492,10 @@ def integrated_gradients_with_progress(model, x, baseline, steps=30, target="reg
     total_grad = torch.zeros_like(x, dtype=torch.float32)
 
     for s in range(1, steps + 1):
-        if progress_bar is not None:
-            progress = int(s / (steps+1) * 100)
-            progress_bar.progress(progress)
+        if progress_callback is not None:
+            progress = s / (steps+1)
+            # progress_bar.progress(progress)
+            progress_callback(progress)
 
         if status_text is not None:
             status_text.text(f"Itération {s}/{steps+1}")
