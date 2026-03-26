@@ -3,7 +3,8 @@
 </h2>
 
 <p align="center">
-  <img src="era5_visuals/figures/gifs/alex_europe.gif" width="400">
+  <video src="era5_visuals/figures/gifs/alex_europe.gif" width="400">
+  </video>
 </p>
 
 
