@@ -1,6 +1,8 @@
 import torch
 from torch.utils.data import DataLoader
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 from tqdm import tqdm
 
 from models.utils.ERA5_dataset_from_local import  ERA5Dataset
@@ -69,7 +71,10 @@ def analyze_concepts(model, dataloader, device="cuda"):
 
     df = df.sort_values(by="mean_contribution", ascending=False)
 
-    return df
+    df_alpha = pd.DataFrame(all_alpha.numpy(), columns=[f"concept_{k}" for k in range(K)])
+    corr_matrix = df_alpha.corr()
+
+    return df, corr_matrix
 
 
 if __name__=="__main__":
@@ -96,5 +101,28 @@ if __name__=="__main__":
             n_concepts=10
         ).to(device)
     
-    df_concepts=analyze_concepts(model, test_loader, device)
+    ckpt = torch.load(CKPT_PATH, map_location=device)
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.eval()
+    
+    df_concepts, corr_matrix=analyze_concepts(model, test_loader, device)
     df_concepts.to_csv("explainability/explainable_by_design/explain_results/concept_analysis.csv", index=False)
+
+
+    #Correlation matrix
+    plt.figure(figsize=(8, 6))
+
+    sns.heatmap(
+        corr_matrix,
+        cmap="coolwarm",
+        center=0,
+        square=True,
+        annot=True,
+        fmt=".2f"
+    )
+
+    plt.title("Correlation between concepts")
+    plt.tight_layout()
+
+    plt.savefig("explainability/explainable_by_design/explain_results/concept_correlation_heatmap.png", dpi=300)
+    plt.show()
