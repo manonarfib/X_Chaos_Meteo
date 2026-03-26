@@ -46,10 +46,10 @@ class Config:
     # Model
     hidden_channels: Tuple[int, int] = (32, 64)
     kernel_size: int = 3
-    n_concepts: int = 10
+    n_concepts: int = 6
 
     # Logging / checkpoint
-    num_exp=0
+    num_exp="6_concepts"
     checkpoint_dir: str = f"checkpoints/weather_cbm/exp_{num_exp}"
     train_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/train_log.csv"
     val_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/validation_log.csv"
