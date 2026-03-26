@@ -447,6 +447,59 @@ def integrated_gradients(model, x, baseline, steps=30, target="region_sum", regi
     total_grad = torch.zeros_like(x, dtype=torch.float32)
 
     for s in range(1, steps + 1):
+        print(f"step {s}")
+        alpha = s / steps
+        x_alpha = baseline + alpha * (x - baseline)
+        x_alpha.requires_grad_(True)
+
+        y_hat = model(x_alpha)
+        if y_hat.dim() == 3:
+            y_hat = y_hat.unsqueeze(1)
+
+        if target == "mean":
+            S = y_hat.mean()
+        elif target == "region_sum":
+            S = (y_hat * region_mask).sum()
+        else:
+            raise ValueError(f"Unknown target: {target}")
+
+        model.zero_grad(set_to_none=True)
+        if x_alpha.grad is not None:
+            x_alpha.grad.zero_()
+        S.backward()
+
+        total_grad += x_alpha.grad.detach()
+
+    avg_grad = total_grad / float(steps)
+    attr = (x - baseline) * avg_grad
+    return attr
+
+def integrated_gradients_with_progress(model, x, baseline, steps=30, target="region_sum", region_mask=None, progress_callback=None, status_text=None):
+    """
+    x: (B,T,C,H,W)
+    baseline: (B,T,C,H,W)
+    region_mask: (B,1,H,W) if target="region_sum"
+    returns attr: (B,T,C,H,W)
+    """
+    assert x.shape == baseline.shape
+    B, T, C, H, W = x.shape
+
+    if target == "region_sum" and region_mask is None:
+        region_mask = torch.ones((B, 1, H, W), device=x.device, dtype=x.dtype)
+
+    x = x.float()
+    baseline = baseline.float()
+    total_grad = torch.zeros_like(x, dtype=torch.float32)
+
+    for s in range(1, steps + 1):
+        if progress_callback is not None:
+            progress = s / (steps+1)
+            # progress_bar.progress(progress)
+            progress_callback(progress)
+
+        if status_text is not None:
+            status_text.text(f"Itération {s}/{steps+1}")
+        print(f"step {s}")
         alpha = s / steps
         x_alpha = baseline + alpha * (x - baseline)
         x_alpha.requires_grad_(True)

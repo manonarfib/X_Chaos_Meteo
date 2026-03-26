@@ -9,6 +9,9 @@ from streamlit_plotly_events import plotly_events
 import plotly.express as px
 import io
 from PIL import Image
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -16,6 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from models.utils.ERA5_dataset_from_local import ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
 from models.unet.model_without_collapse import WFUNet_with_train
+from demonstrator.feature_permutation_for_app import feature_permutation_for_one_sample, integrated_gradients_for_one_sample
 
 # =====================================================
 # Utils
@@ -87,101 +91,10 @@ def build_target_index(times, T, lead):
     max_start = len(times) - T - lead + 1
 
     for t0 in range(max_start):
-        first_pred_time = times[t0 + T]  # ✅ début des prédictions
+        first_pred_time = times[t0 + T] 
         target_to_index[first_pred_time] = t0
 
     return target_to_index
-
-# =====================================================
-# Plotly map (zoom + hover pixel)
-# =====================================================
-
-def plot_interactive_map_geo(arr: np.ndarray, title: str,
-                             lon_min=-12.5, lon_max=42.5,
-                             lat_min=35, lat_max=72):
-
-    H, W = arr.shape
-
-    lons = np.linspace(lon_min, lon_max, W)
-    lats = np.linspace(lat_min, lat_max, H)
-
-    fig = px.imshow(
-        arr,
-        x=lons,
-        y=lats,
-        origin="lower",
-        aspect="auto",
-        title=title,
-        labels=dict(x="Longitude", y="Latitude", color="Value")
-    )
-
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=40, b=0),
-        dragmode="zoom",
-    )
-
-    fig.update_xaxes(constrain="domain")
-    fig.update_yaxes(scaleanchor="x", scaleratio=1)
-
-    return fig
-
-import folium
-from streamlit_folium import st_folium
-import matplotlib.pyplot as plt
-from matplotlib import cm
-
-
-def array_to_png_overlay(arr, vmin=None, vmax=None, cmap_name="Blues"):
-    arr = np.array(arr)
-
-    if vmin is None:
-        vmin = np.nanmin(arr)
-    if vmax is None:
-        vmax = np.nanmax(arr)
-
-    norm = plt.Normalize(vmin=vmin, vmax=vmax)
-    cmap = cm.get_cmap(cmap_name)
-
-    rgba = cmap(norm(arr))  # (H,W,4)
-    rgba[..., 3] = np.where(np.isfinite(arr), 0.85, 0.0)  # alpha mask
-
-    return (rgba * 255).astype(np.uint8)
-
-def plot_folium_raster(arr, title,
-                       region=(-12.5, 42.5, 35, 72),
-                       cmap="Blues"):
-
-    lon_min, lon_max, lat_min, lat_max = region
-
-    center_lat = (lat_min + lat_max) / 2
-    center_lon = (lon_min + lon_max) / 2
-
-    m = folium.Map(
-        location=[center_lat, center_lon],
-        zoom_start=4,
-        tiles="OpenStreetMap"
-    )
-
-    img = array_to_png_overlay(arr, cmap_name=cmap)
-
-    folium.raster_layers.ImageOverlay(
-        image=img,
-        bounds=[[lat_min, lon_min], [lat_max, lon_max]],
-        opacity=1.0,
-        interactive=True,
-        cross_origin=False,
-    ).add_to(m)
-
-    folium.LayerControl().add_to(m)
-
-    return m
-
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-from matplotlib import cm
-import numpy as np
-import streamlit as st
 
 def plot_clean_map(arr: np.ndarray, title: str,
                    lon_min=-12.5, lon_max=42.5,
@@ -217,150 +130,6 @@ def plot_clean_map(arr: np.ndarray, title: str,
     ax.set_title(title)
 
     return fig
-
-
-import plotly.graph_objects as go
-
-def plot_interactive_map_true(
-    arr,
-    title,
-    lon_min=-12.5, lon_max=42.5,
-    lat_min=35, lat_max=72,
-    zmin=None, zmax=None
-):
-
-    H, W = arr.shape
-
-    lons = np.linspace(lon_min, lon_max, W)
-    lats = np.linspace(lat_min, lat_max, H)
-
-    lon_grid, lat_grid = np.meshgrid(lons, lats)
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Heatmap(
-        z=arr,
-        x=lons,
-        y=lats,
-        colorscale="Blues",
-        zmin=zmin,
-        zmax=zmax,
-        colorbar=dict(title="mm"),
-        hovertemplate="Lat: %{y:.2f}<br>Lon: %{x:.2f}<br>Value: %{z:.3f}<extra></extra>"
-    ))
-
-    fig.update_layout(
-        title=title,
-        mapbox=dict(
-            style="carto-positron",  # 🔥 fond de carte Europe propre
-        ),
-        xaxis_title="Longitude",
-        yaxis_title="Latitude",
-        margin=dict(l=0, r=0, t=40, b=0)
-    )
-
-    return fig
-
-# def plot_interactive_map(arr: np.ndarray,
-#                                         title: str,
-#                                         lon_min=-12.5, lon_max=42.5,
-#                                         lat_min=35, lat_max=72,
-#                                         cmap="Blues",
-#                                         alpha=0.6,
-#                                         zmin=None, zmax=None):
-#     """
-#     Retourne une figure Plotly interactive avec :
-#     - fond Cartopy (dessin Europe)
-#     - raster ERA5 overlay
-#     - axes normés
-#     """
-#     # 1️⃣ Générer une image matplotlib avec Cartopy
-#     H, W = arr.shape
-#     fig = plt.figure(figsize=(10,8))
-#     ax = plt.axes(projection=ccrs.PlateCarree())
-#     ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
-
-#     # Fond “dessin” Europe
-#     ax.add_feature(cfeature.LAND.with_scale('50m'), facecolor='lightgray')
-#     ax.add_feature(cfeature.COASTLINE.with_scale('50m'))
-#     ax.add_feature(cfeature.BORDERS.with_scale('50m'), linestyle=':')
-
-#     # Overlay ERA5
-#     img = ax.imshow(arr, origin='lower', extent=[lon_min, lon_max, lat_min, lat_max],
-#                     cmap=cmap, alpha=alpha, vmin=zmin, vmax=zmax)
-
-#     # ax.set_title(title)
-#     ax.axis('off')
-
-#     # Sauvegarder la figure en mémoire
-#     buf = io.BytesIO()
-#     plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-#     plt.close(fig)
-#     buf.seek(0)
-#     pil_img = Image.open(buf)
-
-#     # Convertir en numpy array
-#     img_array = np.array(pil_img)
-
-#     # 2️⃣ Créer figure Plotly interactive
-#     lons = np.linspace(lon_min, lon_max, W)
-#     lats = np.linspace(lat_min, lat_max, H)
-
-#     fig_plotly = go.Figure()
-
-#     fig_plotly.add_trace(go.Image(z=img_array))
-
-#     # Activer hover avec coordonnées approximatives
-#     fig_plotly.update_layout(
-#         title=title,
-#         margin=dict(l=0, r=0, t=40, b=0),
-#         dragmode="zoom",
-#         clickmode="event+select"
-#     )
-
-#     return fig_plotly
-
-
-def display_interactive_map_fixed(arr, title, lon_min=-12.5, lon_max=42.5,
-                                  lat_min=35, lat_max=72,
-                                  cmap="Blues", zmin=None, zmax=None,
-                                  width=600, height=600, key="era5_map"):
-
-    H, W = arr.shape
-    lons = np.linspace(lon_min, lon_max, W)
-    lats = np.linspace(lat_min, lat_max, H)
-
-    fig = go.Figure(go.Heatmap(
-        z=arr,
-        x=lons,
-        y=lats,
-        colorscale=cmap,
-        zmin=zmin,
-        zmax=zmax,
-        colorbar=dict(title="mm"),
-        hovertemplate="Lat: %{y:.2f}<br>Lon: %{x:.2f}<br>Value: %{z:.2f}<extra></extra>"
-    ))
-
-    fig.update_layout(
-        title=title,
-        xaxis=dict(scaleanchor="y"),
-        width=width,
-        height=height,
-        margin=dict(l=0, r=0, t=40, b=0),
-        dragmode="zoom",
-        clickmode="event+select"
-    )
-
-    # 🔹 Affiche la figure et capture les clics
-    clicked = plotly_events(fig, click_event=True, hover_event=False, key=key)
-
-    # 🔹 Stocker le clic dans session_state (redirection gérée ailleurs)
-    if clicked:
-        lat_click = clicked[0]["y"]
-        lon_click = clicked[0]["x"]
-        st.session_state.clicked_pixel = (lat_click, lon_click)
-        st.session_state.has_clicked_pixel = True
-        st.success(f"Pixel cliqué : Lat={lat_click:.2f}, Lon={lon_click:.2f}")
 
 # 🔹 Redirection vers la page explicabilité
 if st.session_state.get("has_clicked_pixel", False):
@@ -454,17 +223,23 @@ def splash_screen():
 # =====================================================
 
 def page_home():
-    st.title("Démonstrateur du Projet XChaos : Explicabilité d'un Système Chaotique - Prévisions Météorologiques 🌧️")
+    st.title("Projet XChaos : Explicabilité d'un Système Chaotique - Prévisions Météorologiques 🌧️")
     
-    # Bannière centrale (GIF)
-    # st.markdown(
-    #     """
-    #     <div style="text-align:center;">
-    #         <img src="era5_visuals/figures/gifs/alex_europe.gif" width="500">
-    #     </div>
-    #     """,
-    #     unsafe_allow_html=True
-    # )
+    gif_path = "era5_visuals/figures/gifs/alex_europe.gif"
+    
+    if os.path.exists(gif_path):
+        with open(gif_path, "rb") as f:
+            data = f.read()
+            base64_gif = base64.b64encode(data).decode()
+        
+        st.markdown(
+            f"""
+            <div style="text-align:center;">
+                <img src="data:image/gif;base64,{base64_gif}" width="500">
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     st.markdown("---")
 
@@ -472,9 +247,9 @@ def page_home():
     st.header("💡 Aperçu")
     st.markdown(
         """
-        Ce démonstrateur vous permet d'explorer des modèles de deep learning pour la prévision des précipitations en Europe
-        sur un horizon de 6 heures à partir des données ERA5.  
-        Vous pouvez également analyser **l'explicabilité des modèles**.
+        Ce démonstrateur vous permet d'explorer des modèles de Deep Learning pour la prévision des précipitations en Europe
+        sur un horizon de 6 heures. Les entraînements ont été réalisés à partir de données ERA5.  
+        Vous pouvez également analyser l'explicabilité des modèles de manière globale, ou propre à la prédiction que vous souhaitez réaliser.
         """
     )
 
@@ -482,21 +257,37 @@ def page_home():
     st.header("🧩 Fonctionnalités")
     col1, col2 = st.columns(2)
     col1.markdown("""
-    - Choix du modèle (ConvLSTM / U-Net)  
+    Inférence : 
     - Sélection des paramètres temporels  
-    - Lancer l'inférence à la demande
+    - Sélection du modèle
+    L'inférence est disponible dans l'onglet 'Inférence'.
     """)
     col2.markdown("""
-    - Zoom et survol des pixels  (TO DO)
-    - Visualisation de l'influence des variables d'entrée  (TO DO)
-    - Autre explicabilité (TO DO)
+    Explicabilité :
+    - Explicabilité globale : importance des variables et des pas de temps pour chaque modèle.
+    - Explicabilité locale : 
+    L'explicabilité globale est disponible dans l'onglet 'Explicabilité locale'.
+    L'explicabilité locale est disponible dans l'onglet 'Explicabilité locale', mais après avoir lancé l'inférence d'un échantillon seulement.    
     """)
+
+    # Bouton pour aller directement à la page d'inférence
+    if st.button("▶ Aller à l'inférence"):
+        st.session_state.page = "Inférence"
+        st.rerun()
  
+    # Bouton pour aller directement à la page d'inférence
+    if st.button("▶ Aller à l'explicabilité globale"):
+        st.session_state.page = "Explicabilité Globale"
+        st.rerun()
 
     st.markdown("---")
 
     # Section Modèles
     st.header("⚙️ Modèles")
+    st.markdown(
+        """
+        Trois modèles ont été développés dans le cadre de ce projet : un modèle ConvLSTM, un U-Net, et un modèle explicable par nature : Weather CBM."""
+    )
     st.subheader("ConvLSTM")
     st.markdown(
         """
@@ -518,6 +309,13 @@ def page_home():
         """
     )
 
+    st.subheader("Weather CBM")
+    st.markdown(
+        """
+        TO DO
+        """
+    )
+
     st.markdown("---")
 
     # Section Auteurs et remerciements
@@ -528,14 +326,9 @@ def page_home():
         **Manon Arfib** — [GitHub](https://github.com/manonarfib)  
         **Nathan Morin** — [GitHub](https://github.com/Nathan9842)  
 
-        Un grand merci à **Florestan Fontaine** de HeadMind Partners pour ses conseils et son accompagnement.
+        Un grand merci à Florestan Fontaine de HeadMind Partners pour ses conseils et son accompagnement.
         """
     )
-    
-    # Bouton pour aller directement à la page d'inférence
-    if st.button("▶ Aller à l'inférence"):
-        st.session_state.page = "Inférence"
-        st.rerun()
 
 
 def page_inference():
@@ -591,6 +384,7 @@ def page_inference():
         dataset_path = dataset_files[dataset_choice]
 
     st.write(f"Dataset sélectionné : {dataset_path}")
+    st.session_state.dataset_path = dataset_path
     # dataset_path = "/usr/users/x_chaos_meteo/arfib_lou/X_Chaos_Meteo/demonstrator/era5_europe_ml_test_2_weeks.zarr"
     # st.write(f"Dataset sélectionné : {dataset_path}")
     
@@ -608,7 +402,7 @@ def page_inference():
     else:
         st.info("Pour lead_time = 8, seul ConvLSTM est disponible")
         ckpt_choice = "ConvLSTM"
-    
+    st.session_state.model = ckpt_choice
     # ckpt_choice = st.radio("Modèle", ["convlstm", "unet"])
 
     ckpt_paths = {
@@ -622,13 +416,16 @@ def page_inference():
     }
     
     ckpt_path = ckpt_paths[(ckpt_choice, lead)]
+    st.session_state.ckpt_path = ckpt_path
     # st.write(f"Checkpoint utilisé : {ckpt_path}")
 
     # ---------------- Load dataset (UNE FOIS) ----------------
     T = 8
+    st.session_state.T = T
     
     dataset, input_vars, times = load_dataset(dataset_path, T, lead)
     C_in = len(input_vars)
+    st.session_state.times = times
 
     # ---------------- Datetime selection ----------------
     st.subheader("Sélection de la date à laquelle prédire les précipitations :")
@@ -735,6 +532,8 @@ def page_inference():
         st.session_state.y_pred_seq = y_pred
         st.session_state.has_prediction = True
 
+        st.session_state.inference_done = True
+
     # ---------------- Display ----------------
     if not st.session_state.get("has_prediction", False):
         st.info("Clique sur 'Lancer l'inférence' pour générer une prédiction.")
@@ -762,6 +561,9 @@ def page_inference():
         )
     else:
         step = 0
+
+    st.session_state.step = step
+    st.session_state.lead = lead
     
     y_pred_step = y_pred_seq[step]
     y_true_step = y_true_seq[step]
@@ -781,30 +583,12 @@ def page_inference():
     vmax_pred = np.max(y_pred_seq)
 
     with tab1:
-        # col1, col2, col3 = st.columns([1, 2, 1])
-        # with col2:
-            # st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
-        # st.plotly_chart(
-        #     plot_interactive_map(
-        #         y_pred_step,
-        #         "Prédiction",
-        #         zmin=vmin_pred,
-        #         zmax=vmax_pred
-        #     ),
-            # width='stretch'
-        # )
-        
-        # st.plotly_chart(plot_interactive_map(
-        #         y_pred_step,
-        #         "Prédiction",
-        #         zmin=vmin_pred,
-        #         zmax=vmax_pred
-        #     ))
-        
-        display_interactive_map_fixed(y_pred_step, "Prediction", key="pred_map")
+        col1, col2, col3 = st.columns([1, 4, 1])
+        with col2:
+            st.pyplot(plot_clean_map(y_pred_step, "Prédiction", figsize=(5,4), vmin=vmin_pred, vmax=vmax_pred))
 
     with tab2:
-        col1, col2, col3 = st.columns([1, 2, 1])
+        col1, col2, col3 = st.columns([1, 4, 1])
         with col2:
             st.pyplot(plot_clean_map(y_true_step, "Truth", figsize=(5,4), vmin=vmin_true, vmax=vmax_true))
 
@@ -813,19 +597,271 @@ def page_inference():
         with col2:
             st.pyplot(plot_clean_map(err, "Error", cmap="Reds", figsize=(5,4), vmin=vmin_true, vmax=vmax_true))
 
-def page_explicabilite():
-    lat, lon = st.session_state.get("clicked_pixel", (None, None))
-    if lat is None:
-        st.warning("Aucun pixel sélectionné")
+    # Bouton pour aller directement à la page d'explicabilité locale
+    if st.button("▶ Comprendre cette prédiction"):
+        st.session_state.page = "Explicabilité Locale"
+        st.rerun()
+
+
+def run_explanation(type="IG"):
+    sample_idx = st.session_state.sample_idx
+    model = st.session_state.model
+    ckpt_path = st.session_state.ckpt_path
+    dataset_path = st.session_state.dataset_path
+    lead = st.session_state.lead
+    T = st.session_state.T
+
+    if type == "IG":
+        # Création de l'emplacement pour la barre
+        progress_placeholder = st.container()
+        with progress_placeholder:
+            st.info("Calcul des Integrated Gradients en cours...")
+            bar = st.progress(0)
+            status_text = st.empty()
+
+        def update_bar(percent):
+            # Le callback doit mettre à jour la barre
+            bar.progress(percent)
+            status_text.text(f"Progression : {int(percent*100)}%")
+
+        # APPEL DE LA FONCTION
+        ig_barplot, ig_lineplot, var_figs, var_names = integrated_gradients_for_one_sample(
+            model, ckpt_path, dataset_path, lead, T, 1, sample_idx, 
+            _progress_callback=update_bar 
+        )
+        
+        # On nettoie la barre une fois fini
+        progress_placeholder.empty()
+
+        st.session_state.ig_barplot = ig_barplot
+        st.session_state.ig_lineplot = ig_lineplot
+        st.session_state.var_figs = var_figs
+        st.session_state.var_names = var_names
+        st.session_state.general_explained = True
+        st.rerun() # Optionnel mais aide à rafraîchir l'affichage des résultats
+
+    elif type == "Permutation":
+        progress_placeholder = st.container()
+        with progress_placeholder:
+            st.warning("Calcul de la permutation (très lent)...")
+            bar = st.progress(0)
+            status_text = st.empty()
+
+        def update_bar_perm(percent):
+            bar.progress(percent)
+            status_text.text(f"Permutation : {int(percent*100)}%")
+
+        perm_barplot, perm_lineplot = feature_permutation_for_one_sample(
+            model, ckpt_path, dataset_path, lead, T, 1, sample_idx,
+            _progress_callback=update_bar_perm
+        )
+        
+        progress_placeholder.empty()
+        st.session_state.perm_barplot = perm_barplot
+        st.session_state.perm_lineplot = perm_lineplot
+        st.session_state.run_perm = True
+        st.rerun()
+
+# --- Page principale ---
+def page_explicabilite_locale():
+    st.header("Explicabilité locale : comprendre une prédiction")
+
+    # Vérification inférence
+    if not st.session_state.get("inference_done"):
+        st.warning("Aucune prédiction à expliquer. Lancez d'abord une inférence.")
         return
 
-    st.header(f"Explicabilité du pixel Lat={lat:.2f}, Lon={lon:.2f}")
+    # --- Bouton retour ---
+    if st.button("🔙 Retour à l'inférence"):
+        st.session_state.page = "Inférence"
+        st.rerun()
 
-    # 🔹 Ici tu peux afficher :
-    # - heatmap d'importance par variable
-    # - contribution des canaux
-    # - etc.
-    st.write("Visualisation explicabilité à implémenter")
+    # --- Reset si sample change ---
+    current_idx = st.session_state.sample_idx
+    if "last_sample_idx" not in st.session_state:
+        st.session_state.last_sample_idx = current_idx
+
+    if st.session_state.last_sample_idx != current_idx:
+        keys_to_reset = [
+            "var_figs", "var_names",
+            "ig_barplot", "ig_lineplot",
+            "perm_barplot", "perm_lineplot",
+            "general_explained", "run_general", "run_perm"
+        ]
+        for k in keys_to_reset:
+            st.session_state.pop(k, None)
+        st.info("Échantillon changé, les explications doivent être recalculées.")
+
+    st.session_state.last_sample_idx = current_idx
+
+    # --- Infos prédiction ---
+    times = st.session_state.times
+    time_predicted = times[st.session_state.sample_idx + st.session_state.T + st.session_state.step]
+    st.markdown(f"**Modèle :** {st.session_state.model}  \n**Date sélectionnée :** {st.session_state.selected_dt}  \n**Date prédite :** {time_predicted}")
+
+    st.subheader("Importance du temps et des variables pour la prédiction")
+
+    st.markdown(
+        """
+        Les mêmes méthodes d'explicabilité sont mises en place que celles d'explicabilité globale.
+        Pour une description détaillée des méthodes, aller sur la page "Explicabilité Globale".
+        """)
+
+    # --- Boutons pour lancer les explications ---
+    col1, col2 = st.columns(2)
+
+    if "perm_done" not in st.session_state:
+        st.session_state.perm_done = False
+
+    with col1:
+        if not st.session_state.get("general_explained", False):
+            if st.button("Lancer l'explication obtenue par Gradients Intégrés."):
+                run_explanation("IG")
+
+    with col2:
+        perm_deja_calcule = st.session_state.get("perm_barplot")
+        if st.session_state.get("general_explained", False) and not perm_deja_calcule:
+            if st.button("Lancer la permutation des variables (TRES LENT sur cpu)."):
+                run_explanation("Permutation")
+                st.session_state.perm_done = True
+            # st.rerun()
+
+    # --- Affichage des figures ---
+    if st.session_state.get("ig_barplot") is not None and st.session_state.get("ig_lineplot") is not None:
+        tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation des variables"])
+
+        with tab1:
+            col1, col2 = st.columns(2)
+            col1.pyplot(st.session_state.ig_lineplot)
+            col1.caption("Importance temporelle")
+            col2.pyplot(st.session_state.ig_barplot)
+            col2.caption("Importance des variables")
+
+        with tab2:
+            if st.session_state.get("perm_barplot") is not None and st.session_state.get("perm_lineplot") is not None:
+                col1, col2 = st.columns(2)
+                col1.pyplot(st.session_state.perm_lineplot)
+                col1.caption("Importance temporelle")
+                col2.pyplot(st.session_state.perm_barplot)
+                col2.caption("Importance des variables")
+            else:
+                st.warning("Lancer la permutation des variables pour obtenir ces résultats.")
+                
+    st.markdown("---")
+
+    # --- Focus sur chaque variable IG ---
+    st.subheader("Focus sur chaque variable")
+    if st.session_state.get("var_figs") and st.session_state.get("var_names"):
+        selected_var = st.selectbox("Choisissez une variable", st.session_state.var_names)
+        idx = st.session_state.var_names.index(selected_var)
+        col1, col2, col3, col4 = st.columns(4)
+        col1.pyplot(st.session_state.var_figs[idx][0])
+        col1.caption("Précipitations à t")
+        col2.pyplot(st.session_state.var_figs[idx][1])
+        col2.caption(f"Evolution de la variable {st.session_state.var_names[idx]} entre t-12h et t")
+        col3.pyplot(st.session_state.var_figs[idx][2])
+        col3.caption("Gradients Intégrés")
+        col4.pyplot(st.session_state.var_figs[idx][3])
+        col4.caption("Superposition des précipitations à t et du contour des GI")
+        # st.pyplot(st.session_state.var_figs[idx])
+    else:
+        st.info("Les variables IG ne sont pas encore calculées.")
+
+
+def page_explicabilite_globale():
+    st.title("Explicabilité globale des modèles de prévision")
+
+    st.markdown("""Une analyse des modèles implémentés a été réalisée, afin de pouvoir les expliquer.
+    Nous avons mis en place plusieurs méthodes d'explicabilité globale :   
+    - étude de l'importance des variables à l'aide des gradients intégrés,  
+    -  étude de l'importance des variables à l'aide de la méthode de permutation des variables.  
+    Les résultats obtenus sont présentés dans cette page.""")
+
+    st.header("Importance des variables")
+
+    col_desc1, col_desc2 = st.columns(2)
+
+    with col_desc1:
+        with st.expander("📉 Gradients Intégrés (Integrated Gradients)", expanded=True):
+            st.markdown(r"""
+            **Approche basée sur les gradient**
+            
+            Cette méthode attribue une contribution à chaque pixel en cumulant les gradients le long d'un chemin entre une référence nulle $x'$ (tenseur de zéros) et l'entrée réelle $x$.
+            
+            - **Formulation** :
+            $$ IG_i(x) \approx (x_i-x_i') \times \frac{1}{m} \sum_{k=1}^{m}{\frac{\partial F(x'+\frac{k}{m}(x-x'))}{\partial x_i}} $$
+            - **Propriétés** : Elle respecte la *complétude* (la somme des importances explique 100% de la variation de la sortie).
+            - **Cible ($F$)** : La quantité expliquée est la somme des précipitations sur le quantile supérieur (90%) de la carte prédite.
+            """)
+
+    with col_desc2:
+        with st.expander("🎲 Importance par Permutation (Feature Importance)", expanded=True):
+                st.markdown(r"""
+                **Approche basée sur la perturbation**
+                
+                Cette méthode mesure la dépendance du modèle à une variable en observant la dégradation de la performance (MSE) lorsque l'information d'entrée est corrompue.
+                
+                - **Méthodologie** : Pour une variable donnée, les pixels de la carte 2D sont mélangés aléatoirement. Cela conserve la distribution statistique mais détruit la **structure spatiale**.
+                - **Calcul** : 
+                $$ \text{Importance}_j = \text{MSE}_{\text{perm}(j)} - \text{MSE}_{\text{baseline}} $$
+                """)
+        
+
+    st.divider() # Ligne de séparation visuelle
+    st.subheader("Modèle ConvLSTM")
+
+    tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+    app_dir = os.path.dirname(__file__)
+
+    with tab1:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_ig_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance temporelle pour le ConvLSTM")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_ig_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance des variables pour le ConvLSTM")
+
+    with tab2:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_fp_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance temporelle pour le ConvLSTM")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "importance_per_variable_convlstm.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance des variables pour le ConvLSTM")
+
+
+    st.subheader("Modèle U-Net")
+
+    tab1, tab2 = st.tabs(["Gradients intégrés", "Permutation de variables"])
+
+    with tab1:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_ig_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance temporelle pour le U-Net")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_ig_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Gradients intégrés - Importance des variables pour le U-Net")
+
+    with tab2:
+        col1, col2 = st.columns([2, 2])
+        with col1:
+            img_path = os.path.join(app_dir, "assets", "explicabilite_globale", "time_importance_mean_std_fp_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance temporelle pour le U-Net")
+        with col2:
+            img_path = os.path.join(app_dir, "assets/explicabilite_globale", "var_importance_mean_std_fp_unet.png")
+            image = Image.open(img_path)
+            st.image(image, caption="Permutation des variables - Importance des variables pour le U-Net")
+
 
 # =====================================================
 # Main
@@ -846,8 +882,8 @@ def main():
     # Affichage du sidebar
     page_sidebar = st.sidebar.selectbox(
         "Navigation",
-        ["Accueil", "Inférence", "Explicabilité"],
-        index=["Accueil", "Inférence", "Explicabilité"].index(st.session_state.page)
+        ["Accueil", "Inférence", "Explicabilité Locale", "Explicabilité Globale"],
+        index=["Accueil", "Inférence", "Explicabilité Locale", "Explicabilité Globale"].index(st.session_state.page)
     )
 
     # mettre à jour session_state seulement si l'utilisateur a changé le selectbox
@@ -858,8 +894,10 @@ def main():
         page_home()
     elif st.session_state.page == "Inférence":
         page_inference()
-    elif st.session_state.page == "Explicabilité":
-        page_explicabilite()
+    elif st.session_state.page == "Explicabilité Locale":
+        page_explicabilite_locale()
+    elif st.session_state.page == "Explicabilité Globale":
+        page_explicabilite_globale()
 
 
 if __name__ == "__main__":
