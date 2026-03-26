@@ -34,9 +34,9 @@ RANDOM_SEED = 42
 CSI_THRESHOLDS = [0.1, 5.0]
 
 # grille de recherche
-TAUS = [0.1, 0.5, 1.0, 2.0, 5.0, 10.0]
-ALPHAS_LOW = np.linspace(0.0, 1.0, 11)
-ALPHAS_HIGH = np.linspace(0.0, 1.0, 11)
+TAUS = [0.1, 0.5, 1.0, 5.0, 10.0]
+ALPHAS_LOW = np.linspace(0.0, 1.0, 6)
+ALPHAS_HIGH = np.linspace(0.0, 1.0, 6)
 
 
 # ============================================================
@@ -370,3 +370,85 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Collecting TRAIN predictions (single pass)...
+# TRAIN batch 0/365
+# TRAIN batch 20/365
+# TRAIN batch 40/365
+# TRAIN batch 60/365
+# TRAIN batch 80/365
+# TRAIN batch 100/365
+# TRAIN batch 120/365
+# TRAIN batch 140/365
+# TRAIN batch 160/365
+# TRAIN batch 180/365
+# TRAIN batch 200/365
+# TRAIN batch 220/365
+# TRAIN batch 240/365
+# TRAIN batch 260/365
+# TRAIN batch 280/365
+# TRAIN batch 300/365
+# TRAIN batch 320/365
+# TRAIN batch 340/365
+# TRAIN batch 360/365
+
+# === ConvLSTM TRAIN ===
+# MSE: 0.646735
+# MAE: 0.314666
+# CSI @ 0.1 mm: 0.681571
+# CSI @ 5.0 mm: 0.405957
+
+# === UNet TRAIN ===
+# MSE: 0.599645
+# MAE: 0.316443
+# CSI @ 0.1 mm: 0.626334
+# CSI @ 5.0 mm: 0.443566
+
+# === Threshold-rule search on TRAIN (cached predictions) ===
+# Best TRAIN rule: tau=0.500 | alpha_low=1.00 | alpha_high=0.40
+
+# === Best Rule TRAIN ===
+# MSE: 0.561668
+# MAE: 0.296029
+# CSI @ 0.1 mm: 0.681766
+# CSI @ 5.0 mm: 0.444860
+# Ranks: MSE=18 | CSI@0.1=5 | CSI@5.0=33 | TOTAL=56
+
+# Collecting VAL predictions (single pass)...
+# VAL batch 0/363
+# VAL batch 20/363
+# VAL batch 40/363
+# VAL batch 60/363
+# VAL batch 80/363
+# VAL batch 100/363
+# VAL batch 120/363
+# VAL batch 140/363
+# VAL batch 160/363
+# VAL batch 180/363
+# VAL batch 200/363
+# VAL batch 220/363
+# VAL batch 240/363
+# VAL batch 260/363
+# VAL batch 280/363
+# VAL batch 300/363
+# VAL batch 320/363
+# VAL batch 340/363
+# VAL batch 360/363
+
+# === ConvLSTM VAL ===
+# MSE: 0.722578
+# MAE: 0.328448
+# CSI @ 0.1 mm: 0.676467
+# CSI @ 5.0 mm: 0.399532
+
+# === UNet VAL ===
+# MSE: 0.679498
+# MAE: 0.331537
+# CSI @ 0.1 mm: 0.620745
+# CSI @ 5.0 mm: 0.428984
+
+# === Threshold Ensemble VAL (tau=0.500, alpha_low=1.00, alpha_high=0.40) ===
+# MSE: 0.635548
+# MAE: 0.310249
+# CSI @ 0.1 mm: 0.676685
+# CSI @ 5.0 mm: 0.433017
