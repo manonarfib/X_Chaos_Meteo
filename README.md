@@ -101,12 +101,7 @@ You can  access a streamlit demonstrator by running :
 It permits you to 
 
 Here is a quick demo of the different functionalities that the demonstrator offers :
-<p align="center">
-  <video src="https://github.com/manonarfib/X_Chaos_Meteo/raw/main/demonstrator/demo_demoonstrator.webm" width="600" autoplay loop muted playsinline controls>
-    Votre navigateur ne supporte pas la lecture de vidéos HTML5.
-  </video>
-</p>
-
+[[Vidéo de Démonstration]](https://github.com/manonarfib/X_Chaos_Meteo/raw/main/demonstrator/demo_demoonstrator.webm)
 
 ## 🤝 Authors
 
