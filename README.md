@@ -4,7 +4,6 @@
 
 <p align="center">
   <video src="era5_visuals/figures/gifs/alex_europe.gif" width="400">
-  </video>
 </p>
 
 
