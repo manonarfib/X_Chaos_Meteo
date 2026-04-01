@@ -102,6 +102,62 @@ The notebook `era5_visuals/visuels_era5.ipynb` allows you to
 
 ### 🌧️ Training a weather forecasting model
 
+Before training either model, make sure the ERA5 training and validation datasets are available locally and that the paths defined in the training scripts match your environment.
+
+Typical expected files are:
+
+```
+era5_europe_ml_train.zarr
+era5_europe_ml_validation.zarr
+```
+If your datasets are stored in a different location, update the corresponding configuration fields in the training scripts before launching training.
+
+#### ConvLSTM
+
+The ConvLSTM training pipeline is implemented in models/ConvLSTM/train_convlstm_with_downloaded_data.py, the script includes a configuration block where you can adjust:
+
+- dataset paths: ```train_dataset_path``` and ```val_dataset_path```,
+- sequence length: ```T``` with default value equals to ```8``` (inputs have a temporal window of ```t-42h``` to ```t```),
+- prediction lead time: ```lead``` with default value equals to ```1``` (we predict precipitation in ```t+6h```), 
+- batch size: ```batch_size``` we recommend to keep a low value since it could take a lot of place in memory,
+- loss function: ```loss_type``` in ```str```,
+- checkpoint and log locations: ```checkpoint_dir```.
+
+Run training with:  
+```
+python -m models/ConvLSTM/train_convlstm_with_downloaded_data
+```
+
+Supported loss functions include standard and weighted variants such as MSE, weighted MSE, Dice-based losses, and a custom advanced_torrential loss designed for heavy precipitation events.
+
+Generated checkpoints and logs are saved under checkpoints/convlstm/, and a different subfolder is create according to the loss type you used for training. Make sure to change the checkpoint location if you changed other parameters (such as lead time or sequence length) or it could erase a previous checkpoint.
+
+#### U-Net
+The U-Net training pipeline is implemented in models/unet/training_optimized.py, the script includes a configuration block where you can adjust:
+
+- dataset paths: ```dataset_train_path``` and ```dataset_val_path```,
+- sequence length: ```n_input_steps``` with default value equals to ```8``` (inputs have a temporal window of ```t-42h``` to ```t```),
+- prediction lead time: ```lead_steps``` with default value equals to ```1``` (we predict precipitation in ```t+6h```), 
+- batch size: ```batch_size``` we recommend to keep a low value since it could take a lot of place in memory,
+- loss function: ```loss_type``` in ```str```.
+
+Run training with:  
+```
+python -m models/unet/training_optimized --save_path {SAVE_PATH}
+```
+
+Where ```SAVE_PATH``` is the path to which your checkpoints will be saved, we recommend you to put a path beginning with ```checkpoints/unet/```.  
+
+Supported loss functions include standard and weighted variants such as MSE, weighted MSE and a Dice-based losses.  
+
+The pretrained checkpoint provided in this repository corresponds to the U-Net model trained with MSE loss.  
+
+#### Additional remarks
+
+- Training automatically uses a GPU when available.
+- Checkpoint loading allows interrupted training to be resumed (a checkpoint is made after each validation but you have to redo the current epoch from the beginning).
+- We recommend checking dataset paths and output directories before launching long experiments.
+- Experiments take a very long time to finish, even with strong GPUs and a small number of epochs.
 
 
 ### 🔬 Explaining a pretrained model
