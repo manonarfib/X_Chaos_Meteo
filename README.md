@@ -54,9 +54,9 @@ This repository is organized as follows:
 X_Chaos_Meteo/
 ├── checkpoints/
 │   ├── convlstm/                 # Checkpoints for the ConvLSTM model according to the loss used during training
-│       ├── advanced_torrential/
-│       ├── mse/
-│       └── ...
+│   │   ├── advanced_torrential/
+│   │   ├── mse/
+│   │   └── ...
 │   └── unet/                     # Checkpoint for the U-Net model corresponding to training with MSE loss
 │   
 ├── demonstrator/
@@ -128,7 +128,7 @@ Run training with:
 python -m models/ConvLSTM/train_convlstm_with_downloaded_data
 ```
 
-Supported loss functions include standard and weighted variants such as MSE, weighted MSE, Dice-based losses, and a custom advanced_torrential loss designed for heavy precipitation events.
+Supported loss functions include: MSE, weighted MSE, Dice-based loss, and a custom advanced_torrential loss designed for heavy precipitation events.
 
 Generated checkpoints and logs are saved under checkpoints/convlstm/, and a different subfolder is create according to the loss type you used for training. Make sure to change the checkpoint location if you changed other parameters (such as lead time or sequence length) or it could erase a previous checkpoint.
 
@@ -148,7 +148,7 @@ python -m models/unet/training_optimized --save_path {SAVE_PATH}
 
 Where ```SAVE_PATH``` is the path to which your checkpoints will be saved, we recommend you to put a path beginning with ```checkpoints/unet/```.  
 
-Supported loss functions include standard and weighted variants such as MSE, weighted MSE and a Dice-based losses.  
+Supported loss functions include: MSE, weighted MSE and a Dice-based losses.  
 
 The pretrained checkpoint provided in this repository corresponds to the U-Net model trained with MSE loss.  
 
