@@ -52,10 +52,17 @@ This repository is organized as follows:
 
 ```text
 X_Chaos_Meteo/
+├── checkpoints/
+│   ├── convlstm/                 # Checkpoints for the ConvLSTM model according to the loss used during training
+│       ├── advanced_torrential/
+│       ├── mse/
+│       └── ...
+│   └── unet/                     # Checkpoint for the U-Net model corresponding to training with MSE loss
+│   
 ├── demonstrator/
-│   ├── 
-│   ├── 
-│   └── 
+│   ├── assets/
+│   ├── era5_europe_ml_test_2_weeks.zarr
+│   └── demo_demonstrator.webm
 │
 ├── download_dataset_from_gcs/  # Scripts to download the data from WeatherBench2
 │
@@ -63,18 +70,24 @@ X_Chaos_Meteo/
 │   ├── figures/            # Created visuals
 │   └── visuels_era5.ipynb  # Notebook to create pretty representations of ERA5 variables
 │
+├── explainability/
+│   ├── clusters/              # Explain rain clusters instead of the whole map prediction
+│   ├── explainable_by_design/ # WeatherCBM implementation
+│   ├── features_permutation/  # Permutation-based importance methods
+│   ├── integrated_gradients/  # Integrated Gradients implementation and aggregation methods
+│   └── noise/                 # Noise methods for explainability
+│
 ├── models/
 │   ├── ConvLSTM/           # ConvLSTM architecture and training scripts
 │   ├── unet/               # U-Net architecture and training scripts
+│   ├── mixture/            # Mixing predictions of ConvLSTM and U-Net to improve final prediction
 │   └── utils/              # Preprocessing, postprocessing and evaluation scripts
 │
-├── explainability/
-│   ├── integrated_gradients/  # Integrated Gradients implementation and aggregation methods
-│   ├── permutation/           # Permutation-based importance methods
-│   └── visualization/         # Tools for visualizing explanations
+├── spearman_correlations/  # Contains script to compute Spearman correlations between our features
 │
 ├── requirements.txt        # Python dependencies
 ├── README.md               # Project documentation
+├── LICENSE
 └── .gitignore
 ```
 
@@ -101,7 +114,7 @@ You can  access a streamlit demonstrator by running :
 It permits you to 
 
 Here is a quick demo of the different functionalities that the demonstrator offers :
-[[Demonstration video]](https://github.com/manonarfib/X_Chaos_Meteo/raw/main/demonstrator/demo_demoonstrator.webm)
+[[Demonstration video]](https://github.com/manonarfib/X_Chaos_Meteo/raw/main/demonstrator/demo_demonstrator.webm)
 
 ## 🤝 Authors
 
