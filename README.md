@@ -162,6 +162,150 @@ The pretrained checkpoint provided in this repository corresponds to the U-Net m
 
 ### 🔬 Explaining a pretrained model
 
+#### Importance by feature permutation
+
+We implement a permutation-based feature importance method to quantify the influence of each input variable and timestep on the model predictions.  
+The idea is to measure how much the model performance degrades when a given feature is randomly permuted. More precisely:
+
+1. A baseline prediction is computed on the original input.
+2. For each feature (defined as a variable at a given timestep), we:
+   - randomly shuffle its spatial values,
+   - run the model again,
+   - measure the increase in prediction error (MSE).
+3. The importance of a feature is defined as the difference between the permuted error and the baseline error.
+
+To compute permutation-based feature importance, one can run:
+
+```
+python -m explainability/features_permutation/permutation_importance
+```
+
+Make sure to configure:
+
+- ```MODEL_TYPE``` ("unet" or "convlstm")
+- ```CKPT_PATH``` (the checkpoint used for the model)
+- ```DATASET_PATH```
+
+inside the script before execution.
+
+
+The script produces:
+
+- A ```.npz``` file containing raw importance scores for each sample: ```explainability/features_permutation/permutation_importances_to_stack_time_and_var_<model>.npz```
+- Aggregated visualizations:
+  1. Importance per variable
+      - Averaged over time and samples
+      - Displayed as a bar plot (top-k variables)
+  2. Importance per timestep
+      - Averaged over variables and samples
+      - Displayed as a line plot with uncertainty (mean ± std)  
+      
+    Saved in: ```explainability/features_permutation/figures/```
+
+#### Integrated Gradients methods
+
+### 🔬 Explainability — Integrated Gradients
+
+We also provide an explainability pipeline based on Integrated Gradients (IG) to identify which input variables, timesteps, and spatial regions contribute the most to the model prediction.
+
+Unlike permutation importance, which measures the performance drop caused by perturbing an input feature, Integrated Gradients is a gradient-based attribution method. It computes feature attributions by integrating gradients along a path between a baseline input and the actual sample. This makes it possible to obtain both:
+
+- global importance summaries, aggregated over multiple samples of the test set,
+- local explanations, showing which pixels and variables influenced a specific prediction.
+
+Given an input sample and a baseline, Integrated Gradients computes the attribution of each input feature by accumulating gradients along interpolated inputs between the baseline and the original sample.
+
+In this implementation, attributions are computed with respect to a target prediction region defined from the model output itself. More precisely:
+
+1. The model predicts a precipitation map.
+2. A region of interest is defined as the pixels above a chosen prediction quantile.
+3. Integrated Gradients is computed with respect to the sum of predictions over this region.
+
+This allows the method to focus on the input features that most influence the strongest predicted precipitation areas.  
+
+The script is configured directly through a user-defined configuration block at the top of the file.
+
+Main parameters that can be modified are:
+
+- `MODEL_TYPE`: model to explain (`"convlstm"` or `"unet"`)
+- `LOSS_NAME`: used for output folder naming
+- `CKPT_PATH`: path to the model checkpoint
+- `DATASET_PATH`: path to the dataset used for explainability
+- `SAMPLE_IDX`: index of the sample used for local visualizations
+- `T`: number of input timesteps
+- `LEAD`: prediction lead time
+
+Aggregation settings:
+
+- `DO_AGG`: whether to compute global aggregated importance over multiple samples
+- `N_SAMPLES_AGG`: number of samples used for aggregation
+- `SEED`: random seed for reproducibility
+
+Attribution settings:
+
+- `IG_STEPS`: number of interpolation steps for Integrated Gradients
+- `BASELINE_MODE`: baseline type (`"zeros"` or `"mean_over_space_time"`)
+- `REGION_QUANTILE`: quantile used to define the region of interest in the predicted map
+
+Visualization settings:
+
+- `T_VIEW`: reference timestep used for map visualizations
+- `CONTOUR_Q`: quantile used to draw the attribution contour overlay
+- `TOP_K_VARS`: number of top variables to visualize
+
+To run the explainability script, execute:
+
+```
+python -m explainability/integrated_gradients/integrated_gradients.py
+```
+
+Before running it, make sure that:
+
+- the dataset path is correct,
+- the checkpoint path matches the chosen model,
+- the configuration block at the top of the script has been adapted to your experiment.
+
+
+The script produces two types of outputs.
+
+1. Aggregated importance over multiple samples  
+  If `DO_AGG = True`, the script computes attributions for a random subset of the dataset and saves:  
+
+    - variable importance plots
+    - mean importance across samples
+    - mean ± standard deviation across samples
+    - time importance plots
+    - mean importance across samples
+    - mean ± standard deviation across samples  
+    
+    These plots provide a global view of which variables and timesteps are the most influential for the model.
+
+2. Detailed visualizations for one selected sample  
+For the sample specified by SAMPLE_IDX, the script saves:
+
+    - a variable importance bar plot
+    - a time importance line plot
+    - a global attribution map aggregated over all variables and timesteps
+    - detailed maps for the top-k most important variables  
+    
+    For each top variable, the visualization includes:
+
+    - the precipitation input map,
+    - the selected variable at several recent timesteps,
+    - the attribution map for that variable,
+    - a contour showing the most important attribution regions overlaid on the precipitation map  
+    
+    This makes it possible to inspect how the model uses specific atmospheric variables in space and time.
+
+Generated files are saved under:
+```explainability/integrated gradients/ig_outputs/ ```
+
+with subfolders depending on:
+
+ - the model (unet or convlstm),
+ - the loss name,
+ - the prediction lead time,
+ - the selected sample index.
 
 ### 🖥️ Demonstrator
 
