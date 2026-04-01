@@ -10,10 +10,10 @@ import explainability.integrated_gradients.integrated_gradients_over_multi_sampl
 # USER CONFIG (no argparse, no inference)
 # ============================================================
 
-MODEL_TYPE = "classic" #classic or with_reg_on_vars
+MODEL_TYPE = "with_reg_on_vars" #classic or with_reg_on_vars
 LOSS_NAME  = "MSE"       # purely for output folder naming
-CKPT_PATH  = "checkpoints/weather_cbm/exp_0/best_checkpoint_epoch5_batch1455.pt"
-N_CONCEPTS=10
+CKPT_PATH  = "checkpoints/weather_cbm/exp_reg_on_vars/best_checkpoint_epoch4_batch545.pt"
+N_CONCEPTS=6
 
 DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_test.zarr"
 SAMPLE_IDX = 250
@@ -274,7 +274,7 @@ def main():
     lead_str = ig_utils.lead_to_str(LEAD)
     model_tag = model_type
     loss_tag = LOSS_NAME.lower()
-    out_dir = f"explainability/explaibable_by_design/explain_results/ig_outputs/{model_tag}"
+    out_dir = f"explainability/explainable_by_design/explain_results/ig_outputs/{model_tag}"
     os.makedirs(out_dir, exist_ok=True)
     print("[OUT_DIR]", out_dir)
 
