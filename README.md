@@ -204,8 +204,6 @@ The script produces:
 
 #### Integrated Gradients methods
 
-### 🔬 Explainability — Integrated Gradients
-
 We also provide an explainability pipeline based on Integrated Gradients (IG) to identify which input variables, timesteps, and spatial regions contribute the most to the model prediction.
 
 Unlike permutation importance, which measures the performance drop caused by perturbing an input feature, Integrated Gradients is a gradient-based attribution method. It computes feature attributions by integrating gradients along a path between a baseline input and the actual sample. This makes it possible to obtain both:
