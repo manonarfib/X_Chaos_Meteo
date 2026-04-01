@@ -14,4 +14,5 @@ permutation_importance_*
 checkpoints*
 explainability/ig*/
 explainability/integrated_gradients/ig_outputs
+explainability/explainable_by_design/explain_results/ig_outputs
 explainability/noise/noise_*
