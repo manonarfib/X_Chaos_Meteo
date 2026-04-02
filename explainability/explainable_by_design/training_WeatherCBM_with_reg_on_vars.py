@@ -50,7 +50,7 @@ class Config:
     n_concepts: int = 6
 
     # Logging / checkpoint
-    num_exp="reg_on_vars"
+    num_exp="reg_on_vars_W_pos"
     checkpoint_dir: str = f"checkpoints/weather_cbm/exp_{num_exp}"
     train_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/train_log.csv"
     val_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/validation_log.csv"
@@ -76,7 +76,7 @@ def get_device() -> torch.device:
 # Loss
 
 def gating_regularization(model, lambda_sparse=1e-4, lambda_div=1e-3):
-    W = model.input_gating.weight  # (K, C_in, 1, 1)
+    W = model.input_gating_raw.weight  # (K, C_in, 1, 1)
     W = W.view(W.shape[0], -1)     # (K, C_in)
 
     # Sparsité → peu de variables par concept

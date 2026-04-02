@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Tuple, List, Optional
 
 
@@ -228,13 +229,12 @@ class WeatherCBM(nn.Module):
             bias=False,
         )
 
-        self.input_gating = nn.Conv2d(
-            in_channels=input_channels,
+        self.input_gating_raw = nn.Conv2d(
+            in_channels=2 * input_channels,
             out_channels=n_concepts,
             kernel_size=1,
             bias=False
         )
-
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -248,7 +248,14 @@ class WeatherCBM(nn.Module):
 
         #input gating
         x_last = x[:, -1]  # (B, C_in, H, W)
-        gated = torch.sigmoid(self.input_gating(x_last))  # (B, K, H, W)
+        x_pos = torch.relu(x_last)
+        x_neg = torch.relu(-x_last)
+        x_aug = torch.cat([x_pos, x_neg], dim=1)
+        K, C2, _, _ = self.input_gating_raw.weight.shape
+        W = self.input_gating_raw.weight.view(K, -1)
+        W_soft = F.softmax(W, dim=1)
+        W_pos = W_soft.view(K, C2, 1, 1)
+        gated = F.conv2d(x_aug, W_pos) # (B, K, H, W)
 
         alpha=alpha*gated
 
