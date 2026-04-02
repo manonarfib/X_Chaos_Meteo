@@ -42,7 +42,6 @@ class Config:
     # Training
     n_epochs: int = 6
     lr: float = 1e-3
-    loss_type: str = "mse"
 
     # Model
     hidden_channels: Tuple[int, int] = (32, 64)
