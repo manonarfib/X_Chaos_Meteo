@@ -305,6 +305,33 @@ with subfolders depending on:
  - the prediction lead time,
  - the selected sample index.
 
+### Training WeatherCBM (explainable-by-design model) and interpreting it
+
+#### Training 
+
+The WeatherCBM training pipeline is implemented in explainability/explainable_by_design/training_WeatherCBM(_with_reg_on_vars).py. The file _with_reg_on_vars implements the version of WeatherCBM with additional loss terms further constraining the use of input variables by the concepts. In each case, the script includes a configuration block where you can adjust:
+
+- dataset paths: ```train_dataset_path``` and ```val_dataset_path```,
+- sequence length: ```T``` with default value equals to ```8``` (inputs have a temporal window of ```t-42h``` to ```t```),
+- prediction lead time: ```lead``` with default value equals to ```1``` (we predict precipitation in ```t+6h```), 
+- batch size: ```batch_size``` we recommend to keep a low value since it could take a lot of place in memory,
+- loss function: ```loss_type``` in ```str```,
+- checkpoint and log locations: ```checkpoint_dir```.
+
+Run training with:  
+```
+python -m explainability/explainable_by_design/training_WeatherCBM
+```
+
+Generated checkpoints and logs are saved under checkpoints/weathercbm/, and a different subfolder is created according to a name you can specify. Make sure to change the checkpoint location if you changed other parameters (such as lead time or sequence length) or it could erase a previous checkpoint.
+
+#### Interpretation
+
+explainability/explainable_by_design/explain_results contains files to interpret the model. 
+- integrated_gradients allows you to visualize which input variables contribute the most to each concept
+- predict_concept_activation saves maps corresponding to the activation of the concepts on a specific sample
+- analysis_regularization gives you access to matrix A of the model with regularization on the input variables, that is to say the importance matrix of each input variable for each concept
+
 ### 🖥️ Demonstrator
 
 You can  access a streamlit demonstrator by running :
