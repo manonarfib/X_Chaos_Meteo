@@ -60,7 +60,7 @@ X_Chaos_Meteo/
 │   └── unet/                           # Checkpoint for the U-Net model corresponding to training with MSE loss
 │   
 ├── demonstrator/
-│   ├── app_avec_calendrier             # Main demonstrator file
+│   ├── app_avec_calendrier.py          # Main demonstrator file
 │   ├── demo_demonstrator.webm          # Demonstration video
 │   └── ...
 │
@@ -208,16 +208,8 @@ inside the script before execution.
 
 The script produces:
 
-- A ```.npz``` file containing raw importance scores for each sample: ```explainability/features_permutation/permutation_importances_to_stack_time_and_var_<model>.npz```
-- Aggregated visualizations:
-  1. Importance per variable
-      - Averaged over time and samples
-      - Displayed as a bar plot (top-k variables)
-  2. Importance per timestep
-      - Averaged over variables and samples
-      - Displayed as a line plot with uncertainty (mean ± std)  
-      
-    Saved in: ```explainability/features_permutation/figures/```
+- A ```.npz``` file containing raw importance scores for each sample downloaded at ```explainability/features_permutation/permutation_importances_to_stack_time_and_var_<model>.npz```
+- Aggregated visualizations: importance per variable and importance per timestep, saved in: ```explainability/features_permutation/figures/```
 
 #### Integrated Gradients methods
 
@@ -275,52 +267,20 @@ python -m explainability.integrated_gradients.integrated_gradients
 ```
 
 Before running it, make sure that:
-
-- the dataset path is correct,
 - the checkpoint path matches the chosen model,
 - the configuration block at the top of the script has been adapted to your experiment.
 
 
 The script produces two types of outputs.
 
-1. Aggregated importance over multiple samples  
-  If `DO_AGG = True`, the script computes attributions for a random subset of the dataset and saves:  
-
-    - variable importance plots
-    - mean importance across samples
-    - mean ± standard deviation across samples
-    - time importance plots
-    - mean importance across samples
-    - mean ± standard deviation across samples  
-    
-    These plots provide a global view of which variables and timesteps are the most influential for the model.
+1. Aggregated importance over multiple samples providing a global view of which variables and timesteps are the most influential for the model.
 
 2. Detailed visualizations for one selected sample  
-For the sample specified by SAMPLE_IDX, the script saves:
-
-    - a variable importance bar plot
-    - a time importance line plot
-    - a global attribution map aggregated over all variables and timesteps
-    - detailed maps for the top-k most important variables  
-    
-    For each top variable, the visualization includes:
-
-    - the precipitation input map,
-    - the selected variable at several recent timesteps,
-    - the attribution map for that variable,
-    - a contour showing the most important attribution regions overlaid on the precipitation map  
-    
-    This makes it possible to inspect how the model uses specific atmospheric variables in space and time.
 
 Generated files are saved under:
 ```explainability/integrated gradients/ig_outputs/ ```
 
-with subfolders depending on:
-
- - the model (unet or convlstm),
- - the loss name,
- - the prediction lead time,
- - the selected sample index.
+with subfolders depending on the model (unet or convlstm), the loss name, the prediction lead time, the selected sample index.
 
 ### Training WeatherCBM (explainable-by-design model) and interpreting it
 
