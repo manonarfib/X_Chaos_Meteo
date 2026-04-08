@@ -60,9 +60,9 @@ X_Chaos_Meteo/
 │   └── unet/                     # Checkpoint for the U-Net model corresponding to training with MSE loss
 │   
 ├── demonstrator/
-│   ├── assets/
-│   ├── era5_europe_ml_test_2_weeks.zarr
-│   └── demo_demonstrator.webm
+│   ├── app_avec_calendrier       # Main demonstrator file
+│   ├── demo_demonstrator.webm    # Demonstration video
+│   └── ...
 │
 ├── download_dataset_from_gcs/  # Scripts to download the data from WeatherBench2
 │
@@ -98,7 +98,16 @@ The notebook `era5_visuals/visuels_era5.ipynb` allows you to
 
 ### 📚 Downloading the dataset
 
+Downloading the dataset is not required to run the codes, as two weeks of data has been downloaded in this git for you (accessible in `./demonstrator/era5_europe_ml_test_2_weeks.zarr`). However if you wish to retrain the models or add new data, you must follow the format we used. 
 
+In `./download_dataset_from_gcs/download_dataset.py`, change :  
+- OUT_ZARR to the desired path,
+- TIME_BLOCKS to download the period of time of your choice.
+
+Run : 
+   ```bash
+   python -m download_dataset_from_gcs.download_dataset
+   ```
 
 ### 🌧️ Training a weather forecasting model
 
@@ -334,12 +343,11 @@ explainability/explainable_by_design/explain_results contains files to interpret
 
 ### 🖥️ Demonstrator
 
-You can  access a streamlit demonstrator by running :
+A demonstrator was also developed, permitting the user to test most of the functionalities described above. It can be accessed here :
 
-It permits you to 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://xchaosmeteo-demonstrator.streamlit.app/)
 
-Here is a quick demo of the different functionalities that the demonstrator offers :
-[[Demonstration video]](https://github.com/manonarfib/X_Chaos_Meteo/raw/main/demonstrator/demo_demonstrator.webm)
+You can also download a short demonstration video if you struggle to use the demonstrator : [[Demonstration video]](https://github.com/manonarfib/X_Chaos_Meteo/raw/main/demonstrator/demo_demonstrator.webm)
 
 ## 🤝 Authors
 
