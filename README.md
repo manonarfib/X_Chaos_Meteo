@@ -53,40 +53,48 @@ This repository is organized as follows:
 ```text
 X_Chaos_Meteo/
 ├── checkpoints/
-│   ├── convlstm/                 # Checkpoints for the ConvLSTM model according to the loss used during training
+│   ├── convlstm/                       # Checkpoints for the ConvLSTM model according to the loss used during training
 │   │   ├── advanced_torrential/
 │   │   ├── mse/
 │   │   └── ...
-│   └── unet/                     # Checkpoint for the U-Net model corresponding to training with MSE loss
+│   └── unet/                           # Checkpoint for the U-Net model corresponding to training with MSE loss
 │   
 ├── demonstrator/
-│   ├── app_avec_calendrier       # Main demonstrator file
-│   ├── demo_demonstrator.webm    # Demonstration video
+│   ├── app_avec_calendrier             # Main demonstrator file
+│   ├── demo_demonstrator.webm          # Demonstration video
 │   └── ...
 │
-├── download_dataset_from_gcs/  # Scripts to download the data from WeatherBench2
+├── download_dataset_from_gcs/          # Scripts to download the data from WeatherBench2
 │
 ├── era5_visuals/
-│   ├── figures/            # Created visuals
-│   └── visuels_era5.ipynb  # Notebook to create pretty representations of ERA5 variables
+│   ├── figures/                        # Created visuals
+│   └── visuels_era5.ipynb              # Notebook to create pretty representations of ERA5 variables
 │
 ├── explainability/
-│   ├── clusters/              # Explain rain clusters instead of the whole map prediction
-│   ├── explainable_by_design/ # WeatherCBM implementation
-│   ├── features_permutation/  # Permutation-based importance methods
-│   ├── integrated_gradients/  # Integrated Gradients implementation and aggregation methods
-│   └── noise/                 # Noise methods for explainability
+│   ├── clusters/                       # Explain rain clusters instead of the whole map prediction
+│   ├── explainable_by_design/          # WeatherCBM implementation
+│   ├── features_permutation/           # Permutation-based importance methods
+│   ├── integrated_gradients/           # Integrated Gradients implementation and aggregation methods
+│   └── noise/                          # Noise methods for explainability
+│
+├── inference/
+│   ├── compare_3models/                # Contains maps and boxplots for compare_model.py
+│   ├── compare_predict_maps_outputs/   # Contains maps and boxplots for compare_predict_maps.py
+│   ├── predict_maps_outputs/           # Contains maps and boxplots for predict_maps.py
+│   ├── compare_model.py                # Create boxplot and map for an inference on test set sample for different models
+│   ├── compare_predict_maps.py         # Create boxplots and maps for an inference on test set sample for different checkpoints using the same model architecture
+│   └── predict_maps.py                 # Create boxplot and map for an inference on test set sample for one checkpoint 
 │
 ├── models/
-│   ├── ConvLSTM/           # ConvLSTM architecture and training scripts
-│   ├── unet/               # U-Net architecture and training scripts
-│   ├── mixture/            # Mixing predictions of ConvLSTM and U-Net to improve final prediction
-│   └── utils/              # Preprocessing, postprocessing and evaluation scripts
+│   ├── ConvLSTM/                       # ConvLSTM architecture and training scripts
+│   ├── unet/                           # U-Net architecture and training scripts
+│   ├── mixture/                        # Mixing predictions of ConvLSTM and U-Net to improve final prediction
+│   └── utils/                          # Preprocessing, postprocessing and evaluation scripts
 │
-├── spearman_correlations/  # Contains script to compute Spearman correlations between our features
+├── spearman_correlations/              # Contains script to compute Spearman correlations between our features
 │
-├── requirements.txt        # Python dependencies
-├── README.md               # Project documentation
+├── requirements.txt                    # Python dependencies
+├── README.md                           # Project documentation
 ├── LICENSE
 └── .gitignore
 ```
@@ -134,7 +142,7 @@ The ConvLSTM training pipeline is implemented in models/ConvLSTM/train_convlstm_
 
 Run training with:  
 ```
-python -m models/ConvLSTM/train_convlstm_with_downloaded_data
+python -m models.ConvLSTM.train_convlstm_with_downloaded_data
 ```
 
 Supported loss functions include: MSE, weighted MSE, Dice-based loss, and a custom advanced_torrential loss designed for heavy precipitation events.
@@ -152,7 +160,7 @@ The U-Net training pipeline is implemented in models/unet/training_optimized.py,
 
 Run training with:  
 ```
-python -m models/unet/training_optimized --save_path {SAVE_PATH}
+python -m models.unet.training_optimized --save_path {SAVE_PATH}
 ```
 
 Where ```SAVE_PATH``` is the path to which your checkpoints will be saved, we recommend you to put a path beginning with ```checkpoints/unet/```.  
@@ -263,7 +271,7 @@ Visualization settings:
 To run the explainability script, execute:
 
 ```
-python -m explainability/integrated_gradients/integrated_gradients.py
+python -m explainability.integrated_gradients.integrated_gradients
 ```
 
 Before running it, make sure that:
@@ -329,7 +337,7 @@ The WeatherCBM training pipeline is implemented in explainability/explainable_by
 
 Run training with:  
 ```
-python -m explainability/explainable_by_design/training_WeatherCBM
+python -m explainability.explainable_by_design.training_WeatherCBM
 ```
 
 Generated checkpoints and logs are saved under checkpoints/weathercbm/, and a different subfolder is created according to a name you can specify. Make sure to change the checkpoint location if you changed other parameters (such as lead time or sequence length) or it could erase a previous checkpoint.
