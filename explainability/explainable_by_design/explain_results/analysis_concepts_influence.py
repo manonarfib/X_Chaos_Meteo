@@ -6,7 +6,8 @@ import seaborn as sns
 from tqdm import tqdm
 
 from models.utils.ERA5_dataset_from_local import  ERA5Dataset
-from explainability.explainable_by_design.WeatherCBM import WeatherCBM
+# from explainability.explainable_by_design.WeatherCBM import WeatherCBM
+from explainability.explainable_by_design.WeatherCBM_with_reg_on_vars import WeatherCBM
 
 @torch.no_grad()
 def analyze_concepts(model, dataloader, device="cuda"):
@@ -83,7 +84,7 @@ if __name__=="__main__":
     DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
     MAX_LEAD=1
     LEAD=1
-    CKPT_PATH="checkpoints/weather_cbm/exp_6_concepts/best_checkpoint_epoch4_batch1455.pt"
+    CKPT_PATH="checkpoints/weather_cbm/exp_reg_on_vars_W_pos/best_checkpoint_epoch5_batch909.pt"
     T=8
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -106,7 +107,7 @@ if __name__=="__main__":
     model.eval()
     
     df_concepts, corr_matrix=analyze_concepts(model, test_loader, device)
-    df_concepts.to_csv("explainability/explainable_by_design/explain_results/concept_analysis_6_concepts.csv", index=False)
+    df_concepts.to_csv("explainability/explainable_by_design/explain_results/concept_analysis_with_reg_on_vars.csv", index=False)
 
 
     #Correlation matrix
@@ -124,5 +125,5 @@ if __name__=="__main__":
     plt.title("Correlation between concepts")
     plt.tight_layout()
 
-    plt.savefig("explainability/explainable_by_design/explain_results/concept_correlation_heatmap_6_concepts.png", dpi=300)
+    plt.savefig("explainability/explainable_by_design/explain_results/concept_correlation_heatmap_with_reg_on_vars.png", dpi=300)
     plt.show()

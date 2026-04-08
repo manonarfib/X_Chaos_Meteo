@@ -9,9 +9,8 @@ import torch.nn as nn
 from models.utils.ERA5_dataset_from_local import  ERA5Dataset
 from models.ConvLSTM.convlstm import PrecipConvLSTM
 from models.unet.model_without_collapse import WFUNet_with_train
-from explainability.explainable_by_design.WeatherCBM import WeatherCBM
-
-import torch
+# from explainability.explainable_by_design.WeatherCBM import WeatherCBM
+from explainability.explainable_by_design.WeatherCBM_with_reg_on_vars import WeatherCBM
 
 def build_model(model_type: str, C_in: int, T: int, device: torch.device, max_lead) -> torch.nn.Module:
     model_type = model_type.lower().strip()
@@ -29,7 +28,7 @@ def build_model(model_type: str, C_in: int, T: int, device: torch.device, max_le
             hidden_channels=[32, 64],
             kernel_size=3,
             output_size=max_lead,
-            n_concepts=10
+            n_concepts=6
         ).to(device)
         return model
     elif model_type == "unet":
@@ -48,7 +47,7 @@ if __name__=='__main__':
     BATCH_SIZE=16
     DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
     MAX_LEAD=1
-    CKPT_PATH="checkpoints/weather_cbm/exp_0/epoch6_full.pt"
+    CKPT_PATH="checkpoints/weather_cbm/exp_reg_on_vars_W_pos/best_checkpoint_epoch5_batch909.pt"
     WITHOUT_PRECIP=False
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
