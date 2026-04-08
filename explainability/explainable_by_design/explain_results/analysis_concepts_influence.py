@@ -83,7 +83,7 @@ if __name__=="__main__":
     DATASET_PATH = "/mounts/datasets/datasets/x_chaos_meteo/dataset_era5/era5_europe_ml_validation.zarr"
     MAX_LEAD=1
     LEAD=1
-    CKPT_PATH="checkpoints/weather_cbm/exp_0/epoch6_full.pt"
+    CKPT_PATH="checkpoints/weather_cbm/exp_6_concepts/best_checkpoint_epoch4_batch1455.pt"
     T=8
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -98,7 +98,7 @@ if __name__=="__main__":
             hidden_channels=[32, 64],
             kernel_size=3,
             output_size=MAX_LEAD,
-            n_concepts=10
+            n_concepts=6
         ).to(device)
     
     ckpt = torch.load(CKPT_PATH, map_location=device)
@@ -106,7 +106,7 @@ if __name__=="__main__":
     model.eval()
     
     df_concepts, corr_matrix=analyze_concepts(model, test_loader, device)
-    df_concepts.to_csv("explainability/explainable_by_design/explain_results/concept_analysis.csv", index=False)
+    df_concepts.to_csv("explainability/explainable_by_design/explain_results/concept_analysis_6_concepts.csv", index=False)
 
 
     #Correlation matrix
@@ -124,5 +124,5 @@ if __name__=="__main__":
     plt.title("Correlation between concepts")
     plt.tight_layout()
 
-    plt.savefig("explainability/explainable_by_design/explain_results/concept_correlation_heatmap.png", dpi=300)
+    plt.savefig("explainability/explainable_by_design/explain_results/concept_correlation_heatmap_6_concepts.png", dpi=300)
     plt.show()

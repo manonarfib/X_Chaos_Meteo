@@ -74,7 +74,7 @@ def get_device() -> torch.device:
 
 # Loss
 
-def gating_regularization(model, lambda_sparse=1e-4, lambda_div=1e-3):
+def gating_regularization(model, lambda_sparse=1e-2, lambda_div=1e-2):
     W = model.input_gating_raw.weight  # (K, C_in, 1, 1)
     W = W.view(W.shape[0], -1)     # (K, C_in)
 
@@ -91,7 +91,7 @@ def gating_regularization(model, lambda_sparse=1e-4, lambda_div=1e-3):
     return lambda_sparse * loss_sparse + lambda_div * loss_div
 
 
-def compute_loss(output, target, alpha, model, l1_weight=1e-4, lambda_sparse=1e-4, lambda_div=1e-3):
+def compute_loss(output, target, alpha, model, l1_weight=1e-2, lambda_sparse=1e-2, lambda_div=1e-2):
     """
     output : prédiction rain (B,1,H,W)
     target : pluie observée (B,1,H,W)
