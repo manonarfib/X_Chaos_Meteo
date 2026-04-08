@@ -337,10 +337,10 @@ The WeatherCBM training pipeline is implemented in explainability/explainable_by
 
 Run training with:  
 ```
-python -m explainability.explainable_by_design.training_WeatherCBM
+python -m explainability.explainable_by_design.training_WeatherCBM_with_reg_on_vars
 ```
 
-Generated checkpoints and logs are saved under checkpoints/weathercbm/, and a different subfolder is created according to a name you can specify. Make sure to change the checkpoint location if you changed other parameters (such as lead time or sequence length) or it could erase a previous checkpoint.
+Generated checkpoints and logs are saved under checkpoints/weathercbm/, and a different subfolder is created according to the name you specify. Make sure to change the checkpoint location if you changed other parameters (such as lead time or sequence length) or it could erase a previous checkpoint.
 
 #### Interpretation
 
