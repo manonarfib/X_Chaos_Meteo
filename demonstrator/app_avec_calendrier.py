@@ -296,6 +296,7 @@ def page_home():
         temporelles et spatiales des précipitations.
         """
     )
+    st.image("demonstrator/assets/ConvLSTM.png", caption="Architecture du ConvLSTM")
 
     st.subheader("U-Net 3D")
     st.markdown(
@@ -308,11 +309,12 @@ def page_home():
         Les convolutions utilisées sont des **Conv3D** avec un padding qui conserve la taille d'entrée. 
         """
     )
+    st.image("demonstrator/assets/schema_unet.png", caption="Architecture du U-Net")
 
     st.subheader("Weather CBM")
     st.markdown(
         """
-        TO DO
+        Ce réseau, explicable par nature, n'est pas présent dans le démonstrateur. Pour plus d'informations sur l'architecture et les résultats obtenus, veuillez consulter le rapport associé au projet.
         """
     )
 
@@ -751,6 +753,16 @@ def page_explicabilite_locale():
 
     # --- Focus sur chaque variable IG ---
     st.subheader("Focus sur chaque variable")
+
+    st.markdown("""
+    Quatre visuels sont générés pour chaque variable, permettant de mieux comprendre la prédiction des précipitations obtenue, pour le temps t+1. Pour des raisons pratiques, seulement les 5 variables avec le plus d'importance peuvent être examinées, elles sont classées par ordre d'importance dans le menu déourlant ci-dessous.  
+    Visuel 1 : les précipitations observées au temps t.  
+    Visuel 2 : l'évolution temporelle de la variable choisie.  
+    Visuel 3 : la valeur prise par les Gradients Intégrés associés à cette variable en chaque pixel. Cela permet de distinguer où le modèle "regarde".  
+    Visuel 4 : la superposition de la carte des précipitations au temps t avec celle des gradients intégrés.  
+    Ce type de visuels permet notamment d'expliquer certaines prévisions. Par exemple en regardant la pression, il est possible d'identifier des dépressions proches des endroits où les gradients intégrés sont les plus forts, pouvant engendrer de la pluie. 
+                """)
+
     if st.session_state.get("var_figs") and st.session_state.get("var_names"):
         selected_var = st.selectbox("Choisissez une variable", st.session_state.var_names)
         idx = st.session_state.var_names.index(selected_var)
