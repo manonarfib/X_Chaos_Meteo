@@ -54,14 +54,10 @@ This repository is organized as follows:
 X_Chaos_Meteo/
 ├── checkpoints/
 │   ├── convlstm/                       # Checkpoints for the ConvLSTM model according to the loss used during training
-│   │   ├── advanced_torrential/
-│   │   ├── mse/
-│   │   └── ...
 │   └── unet/                           # Checkpoint for the U-Net model corresponding to training with MSE loss
 │   
 ├── demonstrator/
 │   ├── app_avec_calendrier.py          # Main demonstrator file
-│   ├── demo_demonstrator.webm          # Demonstration video
 │   └── ...
 │
 ├── download_dataset_from_gcs/          # Scripts to download the data from WeatherBench2
@@ -94,15 +90,20 @@ X_Chaos_Meteo/
 ├── spearman_correlations/              # Contains script to compute Spearman correlations between our features
 │
 ├── requirements.txt                    # Python dependencies
-├── README.md                           # Project documentation
-├── LICENSE
-└── .gitignore
+└── README.md                           # Project documentation
 ```
+
+### 🖥️ Demonstrator
+
+A demonstrator was developed, permitting the user to test most of the functionalities described above. It can be accessed here :
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://xchaosmeteo-demonstrator.streamlit.app/)
+
+You can also download a short demonstration video if you struggle to use the demonstrator : [[Demonstration video]](https://github.com/manonarfib/X_Chaos_Meteo/raw/main/demonstrator/demo_demonstrator.webm)
 
 ### 🔍 Visualizing some variables
 
-The notebook `era5_visuals/visuels_era5.ipynb` allows you to 
-
+The notebook `era5_visuals/visuels_era5.ipynb` allows you to visualize and plot key variables of ERA5 dataset.
 
 ### 📚 Downloading the dataset
 
@@ -117,17 +118,20 @@ Run :
    python -m download_dataset_from_gcs.download_dataset
    ```
 
+The following data was used to train the available models :
+- train set: 1980-01-01 to 2018-01-01
+- validation set: 2018-01-01 to 2020-01-01
+- test set: 2020-10-10 to 2022-01-01 
+
 ### 🌧️ Training a weather forecasting model
 
 Before training either model, make sure the ERA5 training and validation datasets are available locally and that the paths defined in the training scripts match your environment.
 
 Typical expected files are:
-
 ```
 era5_europe_ml_train.zarr
 era5_europe_ml_validation.zarr
 ```
-If your datasets are stored in a different location, update the corresponding configuration fields in the training scripts before launching training.
 
 #### ConvLSTM
 
@@ -151,7 +155,6 @@ Generated checkpoints and logs are saved under checkpoints/convlstm/, and a diff
 
 #### U-Net
 The U-Net training pipeline is implemented in models/unet/training_optimized.py, the script includes a configuration block where you can adjust:
-
 - dataset paths: ```dataset_train_path``` and ```dataset_val_path```,
 - sequence length: ```n_input_steps``` with default value equals to ```8``` (inputs have a temporal window of ```t-42h``` to ```t```),
 - prediction lead time: ```lead_steps``` with default value equals to ```1``` (we predict precipitation in ```t+6h```), 
@@ -164,18 +167,8 @@ python -m models.unet.training_optimized --save_path {SAVE_PATH}
 ```
 
 Where ```SAVE_PATH``` is the path to which your checkpoints will be saved, we recommend you to put a path beginning with ```checkpoints/unet/```.  
-
 Supported loss functions include: MSE, weighted MSE and a Dice-based losses.  
-
 The pretrained checkpoint provided in this repository corresponds to the U-Net model trained with MSE loss.  
-
-#### Additional remarks
-
-- Training automatically uses a GPU when available.
-- Checkpoint loading allows interrupted training to be resumed (a checkpoint is made after each validation but you have to redo the current epoch from the beginning).
-- We recommend checking dataset paths and output directories before launching long experiments.
-- Experiments take a very long time to finish, even with strong GPUs and a small number of epochs.
-
 
 ### 🔬 Explaining a pretrained model
 
@@ -185,10 +178,7 @@ We implement a permutation-based feature importance method to quantify the influ
 The idea is to measure how much the model performance degrades when a given feature is randomly permuted. More precisely:
 
 1. A baseline prediction is computed on the original input.
-2. For each feature (defined as a variable at a given timestep), we:
-   - randomly shuffle its spatial values,
-   - run the model again,
-   - measure the increase in prediction error (MSE).
+2. For each feature (defined as a variable at a given timestep), we randomly shuffle its spatial values, run the model again, and measure the increase in prediction error (MSE).
 3. The importance of a feature is defined as the difference between the permuted error and the baseline error.
 
 To compute permutation-based feature importance, one can run:
@@ -207,7 +197,6 @@ inside the script before execution.
 
 
 The script produces:
-
 - A ```.npz``` file containing raw importance scores for each sample downloaded at ```explainability/features_permutation/permutation_importances_to_stack_time_and_var_<model>.npz```
 - Aggregated visualizations: importance per variable and importance per timestep, saved in: ```explainability/features_permutation/figures/```
 
@@ -215,14 +204,9 @@ The script produces:
 
 We also provide an explainability pipeline based on Integrated Gradients (IG) to identify which input variables, timesteps, and spatial regions contribute the most to the model prediction.
 
-Unlike permutation importance, which measures the performance drop caused by perturbing an input feature, Integrated Gradients is a gradient-based attribution method. It computes feature attributions by integrating gradients along a path between a baseline input and the actual sample. This makes it possible to obtain both:
+Integrated Gradients is a gradient-based attribution method. It computes feature attributions by integrating gradients along a path between a baseline input and the actual sample. This makes it possible to obtain both global importance summaries (aggregated over multiple samples of the test set) and local explanations (showing which pixels and variables influenced a specific prediction).
 
-- global importance summaries, aggregated over multiple samples of the test set,
-- local explanations, showing which pixels and variables influenced a specific prediction.
-
-Given an input sample and a baseline, Integrated Gradients computes the attribution of each input feature by accumulating gradients along interpolated inputs between the baseline and the original sample.
-
-In this implementation, attributions are computed with respect to a target prediction region defined from the model output itself. More precisely:
+Given an input sample and a baseline, Integrated Gradients computes the attribution of each input feature by accumulating gradients along interpolated inputs between the baseline and the original sample. In this implementation, attributions are computed with respect to a target prediction region defined from the model output itself. More precisely:
 
 1. The model predicts a precipitation map.
 2. A region of interest is defined as the pixels above a chosen prediction quantile.
@@ -230,10 +214,7 @@ In this implementation, attributions are computed with respect to a target predi
 
 This allows the method to focus on the input features that most influence the strongest predicted precipitation areas.  
 
-The script is configured directly through a user-defined configuration block at the top of the file.
-
-Main parameters that can be modified are:
-
+The script is configured directly through a user-defined configuration block at the top of the file. Main parameters that can be modified are:
 - `MODEL_TYPE`: model to explain (`"convlstm"` or `"unet"`)
 - `LOSS_NAME`: used for output folder naming
 - `CKPT_PATH`: path to the model checkpoint
@@ -243,43 +224,25 @@ Main parameters that can be modified are:
 - `LEAD`: prediction lead time
 
 Aggregation settings:
-
 - `DO_AGG`: whether to compute global aggregated importance over multiple samples
 - `N_SAMPLES_AGG`: number of samples used for aggregation
 - `SEED`: random seed for reproducibility
 
 Attribution settings:
-
 - `IG_STEPS`: number of interpolation steps for Integrated Gradients
 - `BASELINE_MODE`: baseline type (`"zeros"` or `"mean_over_space_time"`)
 - `REGION_QUANTILE`: quantile used to define the region of interest in the predicted map
 
-Visualization settings:
-
-- `T_VIEW`: reference timestep used for map visualizations
-- `CONTOUR_Q`: quantile used to draw the attribution contour overlay
-- `TOP_K_VARS`: number of top variables to visualize
-
 To run the explainability script, execute:
-
 ```
 python -m explainability.integrated_gradients.integrated_gradients
 ```
-
-Before running it, make sure that:
-- the checkpoint path matches the chosen model,
-- the configuration block at the top of the script has been adapted to your experiment.
-
-
 The script produces two types of outputs.
-
-1. Aggregated importance over multiple samples providing a global view of which variables and timesteps are the most influential for the model.
-
-2. Detailed visualizations for one selected sample  
+- Aggregated importance over multiple samples providing a global view of which variables and timesteps are the most influential for the model.
+- Detailed visualizations for one selected sample
 
 Generated files are saved under:
 ```explainability/integrated gradients/ig_outputs/ ```
-
 with subfolders depending on the model (unet or convlstm), the loss name, the prediction lead time, the selected sample index.
 
 ### Training WeatherCBM (explainable-by-design model) and interpreting it
@@ -308,14 +271,6 @@ explainability/explainable_by_design/explain_results contains files to interpret
 - integrated_gradients allows you to visualize which input variables contribute the most to each concept
 - predict_concept_activation saves maps corresponding to the activation of the concepts on a specific sample
 - analysis_regularization gives you access to matrix A of the model with regularization on the input variables, that is to say the importance matrix of each input variable for each concept
-
-### 🖥️ Demonstrator
-
-A demonstrator was also developed, permitting the user to test most of the functionalities described above. It can be accessed here :
-
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://xchaosmeteo-demonstrator.streamlit.app/)
-
-You can also download a short demonstration video if you struggle to use the demonstrator : [[Demonstration video]](https://github.com/manonarfib/X_Chaos_Meteo/raw/main/demonstrator/demo_demonstrator.webm)
 
 ## 🤝 Authors
 
