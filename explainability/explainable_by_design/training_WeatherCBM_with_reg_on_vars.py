@@ -42,6 +42,9 @@ class Config:
     # Training
     n_epochs: int = 6
     lr: float = 1e-3
+    l1_weight: float = 1e-4
+    lambda_sparse: float = 10
+    lambda_div: float = 1
 
     # Model
     hidden_channels: Tuple[int, int] = (32, 64)
@@ -49,7 +52,7 @@ class Config:
     n_concepts: int = 6
 
     # Logging / checkpoint
-    num_exp="reg_on_vars_W_pos"
+    num_exp="reg_on_vars_W_pos_l1_1e-4_lambda_sparse_10_lambda_div_1"
     checkpoint_dir: str = f"checkpoints/weather_cbm/exp_{num_exp}"
     train_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/train_log.csv"
     val_csv: str = f"checkpoints/weather_cbm/exp_{num_exp}/validation_log.csv"
@@ -252,7 +255,7 @@ def run_validation(model, val_loader, device):
 
             y_hat, alpha = model(X)
             y_hat=y_hat.squeeze(1)
-            loss = compute_loss(y_hat, y, alpha, model, l1_weight=1e-4)
+            loss = compute_loss(y_hat, y, alpha, model, l1_weight=cfg.l1_weight, lambda_sparse=cfg.lambda_sparse, lambda_div=cfg.lambda_div)
             total_loss += loss.item()
 
     return total_loss / len(val_loader)
@@ -307,7 +310,7 @@ def train(cfg: Config):
 
             y_hat, alpha = model(X)
             y_hat=y_hat.squeeze(1)
-            loss = compute_loss(y_hat, y, alpha, model, l1_weight=1e-4)
+            loss = compute_loss(y_hat, y, alpha, model, l1_weight=cfg.l1_weight, lambda_sparse=cfg.lambda_sparse, lambda_div=cfg.lambda_div)
 
             (loss / accumulation_steps).backward()
             epoch_loss += loss.item()
